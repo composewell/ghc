@@ -221,6 +221,7 @@ forkOS_createThreadWrapper ( void * entry )
 {
     Capability *cap;
     cap = rts_lock();
+    //fprintf (stderr, "forkOS_createThreadWrapper");
     rts_evalStableIO(&cap, (HsStablePtr) entry, NULL);
     rts_unlock(cap);
     rts_done();

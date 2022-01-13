@@ -388,6 +388,7 @@ createGenThread (Capability *cap, W_ stack_size,  StgClosure *closure)
 {
   StgTSO *t;
   t = createThread (cap, stack_size);
+  //fprintf (stderr, "createGenThread %d\n", t->id);
   pushClosure(t, (W_)closure);
   pushClosure(t, (W_)&stg_enter_info);
   return t;
@@ -398,6 +399,31 @@ createIOThread (Capability *cap, W_ stack_size,  StgClosure *closure)
 {
   StgTSO *t;
   t = createThread (cap, stack_size);
+  //fprintf (stderr, "createIOThread %d\n", t->id);
+  pushClosure(t, (W_)&stg_ap_v_info);
+  pushClosure(t, (W_)closure);
+  pushClosure(t, (W_)&stg_enter_info);
+  return t;
+}
+
+StgTSO *
+createIOThread1 (Capability *cap, W_ stack_size,  StgClosure *closure)
+{
+  StgTSO *t;
+  t = createThread (cap, stack_size);
+  //fprintf (stderr, "createForkIOThread %d\n", t->id);
+  pushClosure(t, (W_)&stg_ap_v_info);
+  pushClosure(t, (W_)closure);
+  pushClosure(t, (W_)&stg_enter_info);
+  return t;
+}
+
+StgTSO *
+createIOThread2 (Capability *cap, W_ stack_size,  StgClosure *closure)
+{
+  StgTSO *t;
+  t = createThread (cap, stack_size);
+  //fprintf (stderr, "createForkOnThread %d\n", t->id);
   pushClosure(t, (W_)&stg_ap_v_info);
   pushClosure(t, (W_)closure);
   pushClosure(t, (W_)&stg_enter_info);
@@ -414,6 +440,7 @@ createStrictIOThread(Capability *cap, W_ stack_size,  StgClosure *closure)
 {
   StgTSO *t;
   t = createThread(cap, stack_size);
+  //fprintf (stderr, "createStrictIOThread %d\n", t->id);
   pushClosure(t, (W_)&stg_forceIO_info);
   pushClosure(t, (W_)&stg_ap_v_info);
   pushClosure(t, (W_)closure);
@@ -432,6 +459,7 @@ void rts_eval (/* inout */ Capability **cap,
     StgTSO *tso;
 
     tso = createGenThread(*cap, RtsFlags.GcFlags.initialStkSize, p);
+    //fprintf (stderr, "rts_eval %d\n", tso->id);
     scheduleWaitThread(tso,ret,cap);
 }
 
@@ -443,6 +471,7 @@ void rts_eval_ (/* inout */ Capability **cap,
     StgTSO *tso;
 
     tso = createGenThread(*cap, stack_size, p);
+    //fprintf (stderr, "rts_eval_ %d\n", tso->id);
     scheduleWaitThread(tso,ret,cap);
 }
 
@@ -457,6 +486,7 @@ void rts_evalIO (/* inout */ Capability **cap,
     StgTSO* tso;
 
     tso = createStrictIOThread(*cap, RtsFlags.GcFlags.initialStkSize, p);
+    //fprintf (stderr, "rts_evalIO %d\n", tso->id);
     scheduleWaitThread(tso,ret,cap);
 }
 
@@ -477,6 +507,7 @@ void rts_evalStableIOMain(/* inout */ Capability **cap,
     p = (StgClosure *)deRefStablePtr(s);
     w = rts_apply(*cap, &base_GHCziTopHandler_runMainIO_closure, p);
     tso = createStrictIOThread(*cap, RtsFlags.GcFlags.initialStkSize, w);
+    //fprintf (stderr, "rts_evalStableIOMain %d\n", tso->id);
     // async exceptions are always blocked by default in the created
     // thread.  See #1048.
     tso->flags |= TSO_BLOCKEX | TSO_INTERRUPTIBLE;
@@ -505,6 +536,7 @@ void rts_evalStableIO (/* inout */ Capability **cap,
 
     p = (StgClosure *)deRefStablePtr(s);
     tso = createStrictIOThread(*cap, RtsFlags.GcFlags.initialStkSize, p);
+    //fprintf (stderr, "rts_evalStableIO %d\n", tso->id);
     // async exceptions are always blocked by default in the created
     // thread.  See #1048.
     tso->flags |= TSO_BLOCKEX | TSO_INTERRUPTIBLE;
@@ -527,6 +559,7 @@ void rts_evalLazyIO (/* inout */ Capability **cap,
     StgTSO *tso;
 
     tso = createIOThread(*cap, RtsFlags.GcFlags.initialStkSize, p);
+    //fprintf (stderr, "rts_evalLazyIO %d\n", tso->id);
     scheduleWaitThread(tso,ret,cap);
 }
 
@@ -538,6 +571,7 @@ void rts_evalLazyIO_ (/* inout */ Capability **cap,
     StgTSO *tso;
 
     tso = createIOThread(*cap, stack_size, p);
+    //fprintf (stderr, "rts_evalLazyIO_ %d\n", tso->id);
     scheduleWaitThread(tso,ret,cap);
 }
 
