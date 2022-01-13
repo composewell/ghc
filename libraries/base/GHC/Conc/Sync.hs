@@ -116,6 +116,7 @@ import GHC.Real         ( fromIntegral )
 import GHC.Show         ( Show(..), showString )
 import GHC.Stable       ( StablePtr(..) )
 import GHC.Weak
+import GHC.OldList
 
 infixr 0 `par`, `pseq`
 
@@ -245,6 +246,29 @@ foreign import ccall unsafe "rts_enableThreadAllocationLimit"
 foreign import ccall unsafe "rts_disableThreadAllocationLimit"
   rts_disableThreadAllocationLimit :: ThreadId# -> IO ()
 
+forkIO1 :: IO () -> IO ThreadId
+forkIO1 action = IO $ \ s ->
+   case (fork# action_plus s) of (# s1, tid #) -> (# s1, ThreadId tid #)
+ where
+  -- We must use 'catch' rather than 'catchException' because the action
+  -- could be bottom. #13330
+  action_plus = catch action childHandler
+
+foreign import ccall unsafe "stdio.h dprintf"
+    c_dprintf :: CInt -> CString -> IO CInt
+
+{-# INLINE printStack #-}
+printStack :: IO ()
+printStack = do
+  ccsStack <- currentCallStack
+  let ccsCallStack = showCCSStack ccsStack
+      stack = intercalate "\n" ccsCallStack
+  tid <- myThreadId
+  _ <- GHC.Foreign.withCString
+        utf8 ("forkIO: " ++ show tid ++ "\n" ++ stack ++ "\n") $ \str ->
+          c_dprintf 2 str
+  return ()
+
 {- |
 Creates a new thread to run the 'IO' computation passed as the
 first argument, and returns the 'ThreadId' of the newly created
@@ -264,12 +288,9 @@ exceptions 'BlockedIndefinitelyOnMVar', 'BlockedIndefinitelyOnSTM', and
 exception handler.
 -}
 forkIO :: IO () -> IO ThreadId
-forkIO action = IO $ \ s ->
-   case (fork# action_plus s) of (# s1, tid #) -> (# s1, ThreadId tid #)
- where
-  -- We must use 'catch' rather than 'catchException' because the action
-  -- could be bottom. #13330
-  action_plus = catch action childHandler
+forkIO action =
+    -- printStack >>
+    forkIO1 action
 
 -- | Like 'forkIO', but the child thread is passed a function that can
 -- be used to unmask asynchronous exceptions.  This function is
@@ -289,6 +310,14 @@ forkIO action = IO $ \ s ->
 -- @since 4.4.0.0
 forkIOWithUnmask :: ((forall a . IO a -> IO a) -> IO ()) -> IO ThreadId
 forkIOWithUnmask io = forkIO (io unsafeUnmask)
+
+forkOn1 :: Int -> IO () -> IO ThreadId
+forkOn1 (I# cpu) action = IO $ \ s ->
+   case (forkOn# cpu action_plus s) of (# s1, tid #) -> (# s1, ThreadId tid #)
+ where
+  -- We must use 'catch' rather than 'catchException' because the action
+  -- could be bottom. #13330
+  action_plus = catch action childHandler
 
 {- |
 Like 'forkIO', but lets you specify on which capability the thread
@@ -314,12 +343,9 @@ is recommended).
 @since 4.4.0.0
 -}
 forkOn :: Int -> IO () -> IO ThreadId
-forkOn (I# cpu) action = IO $ \ s ->
-   case (forkOn# cpu action_plus s) of (# s1, tid #) -> (# s1, ThreadId tid #)
- where
-  -- We must use 'catch' rather than 'catchException' because the action
-  -- could be bottom. #13330
-  action_plus = catch action childHandler
+forkOn cpu action =
+    -- printStack >>
+    forkOn1 cpu action
 
 -- | Like 'forkIOWithUnmask', but the child thread is pinned to the
 -- given CPU, as with 'forkOn'.

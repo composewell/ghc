@@ -32,6 +32,7 @@ module GHC.Exception
        , CallStack, fromCallSiteList, getCallStack, prettyCallStack
        , prettyCallStackLines, showCCSStack
        , SrcLoc(..), prettySrcLoc
+       , currentCallStack
        ) where
 
 import GHC.Base
