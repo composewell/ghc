@@ -451,6 +451,8 @@ wanteds os = concat
           ,closureField  Both "StgTSO"      "alloc_limit"
           ,closureField_ Both "StgTSO_cccs" "StgTSO" "prof.cccs"
           ,closureField  Both "StgTSO"      "stackobj"
+          ,closureField  C "StgTSO"      "cur_sec"
+          ,closureField  C "StgTSO"      "cur_nsec"
 
           ,closureField       Both "StgStack" "sp"
           ,closureFieldOffset Both "StgStack" "stack"

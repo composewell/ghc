@@ -447,6 +447,7 @@ RTS_FUN_DECL(stg_myThreadIdzh);
 RTS_FUN_DECL(stg_labelThreadzh);
 RTS_FUN_DECL(stg_isCurrentThreadBoundzh);
 RTS_FUN_DECL(stg_threadStatuszh);
+RTS_FUN_DECL(stg_threadCPUTimezh);
 
 RTS_FUN_DECL(stg_mkWeakzh);
 RTS_FUN_DECL(stg_mkWeakNoFinalizzerzh);

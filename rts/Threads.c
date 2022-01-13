@@ -116,6 +116,9 @@ createThread(Capability *cap, W_ size)
     tso->prof.cccs = CCS_MAIN;
 #endif
 
+    tso->cur_sec = 0;
+    tso->cur_nsec = 0;
+
     // put a stop frame on the stack
     stack->sp -= sizeofW(StgStopFrame);
     SET_HDR((StgClosure*)stack->sp,

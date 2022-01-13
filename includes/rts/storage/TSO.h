@@ -182,6 +182,8 @@ typedef struct StgTSO_ {
 #if defined(mingw32_HOST_OS)
     StgWord32 saved_winerror;
 #endif
+    StgInt64 cur_sec;
+    StgInt64 cur_nsec;
 
 } *StgTSOPtr; // StgTSO defined in rts/Types.h
 

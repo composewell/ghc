@@ -173,6 +173,8 @@ static void deleteThread_(StgTSO *tso);
 
    ------------------------------------------------------------------------ */
 
+#define TEN_POWER9 1000000000
+
 static Capability *
 schedule (Capability *initialCapability, Task *task)
 {
@@ -436,6 +438,10 @@ run_thread:
         recent_activity = ACTIVITY_YES;
     }
 
+    // Just the monotonic time is not enough, we should post thread cpu
+    // time as well. Monotonic time may include the time when the kernel
+    // thread is on runqueue if the thread gets preempted in the middle.
+    // So we cannot get accurate cpu time of the thread.
     traceEventRunThread(cap, t);
 
     switch (prev_what_next) {
@@ -449,7 +455,49 @@ run_thread:
     case ThreadRunGHC:
     {
         StgRegTable *r;
+
+        struct timespec ts;
+        int retval;
+        // fprintf (stderr, "ON ENTRY: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
+        retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
+        if (retval != 0) {
+          fprintf (stderr, "clock_gettime before failed");
+        } else {
+          if (t->cur_sec < 0 || t->cur_nsec < 0) {
+            fprintf (stderr, "ON ENTRY ERROR: t->cur_sec = %ld t->cur_nsec = %ld\n", t->cur_sec, t->cur_nsec);
+          }
+          t->cur_sec -= ts.tv_sec;
+          t->cur_nsec -= ts.tv_nsec;
+          // fprintf (stderr, "BEFORE START: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
+          // nsec offset is 128
+          //fprintf (stderr, "tso nsec offset: %ld", (char *)(&t->cur_nsec) - (char *)t);
+          //exit (1);
+          // nsec sizeof = 8
+          //fprintf (stderr, "tso nsec size: %d", sizeof(t->cur_nsec));
+        };
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
+        retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
+        if (retval != 0) {
+          fprintf (stderr, "clock_gettime after failed");
+        } else {
+          t = cap->r.rCurrentTSO;
+          //fprintf (stderr, "sec = %ld nsec = %ld\n", ts.tv_sec, ts.tv_nsec);
+          t->cur_sec += ts.tv_sec;
+          t->cur_nsec += ts.tv_nsec;
+          if (t->cur_nsec < 0) {
+            t->cur_nsec += TEN_POWER9;
+            t->cur_sec -= 1;
+          } else if (t->cur_nsec >= TEN_POWER9) {
+            t->cur_nsec -= TEN_POWER9;
+            t->cur_sec += 1;
+          }
+          // fprintf (stderr, "AFTER DONE: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
+          if (t->cur_sec < 0 || t->cur_nsec < 0) {
+            fprintf (stderr, "ON EXIT ERROR: t->cur_sec = %ld t->cur_nsec = %ld\n", t->cur_sec, t->cur_nsec);
+          }
+          //fprintf (stderr, "acc sec = %ld acc nsec = %ld\n", t->cur_sec, t->cur_nsec);
+        }
+
         cap = regTableToCapability(r);
         ret = r->rRet;
         break;
@@ -538,6 +586,7 @@ run_thread:
         break;
 
     case ThreadFinished:
+        //fprintf (stderr, "tid %d: sec = %ld nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
         if (scheduleHandleThreadFinished(cap, task, t)) return cap;
         ASSERT_FULL_CAPABILITY_INVARIANTS(cap,task);
         break;

@@ -12,6 +12,10 @@
 // internal headers
 #include "Trace.h"
 
+void traceThreadCPUTime (int64_t sec, int64_t nsec, int off, int hdr) {
+  fprintf (stderr, "traceThreadCPUTime: sec = %ld nsec = %ld off = %d hdr = %d\n", sec, nsec, off, hdr);
+}
+
 #if defined(TRACING)
 
 #include "GetTime.h"
