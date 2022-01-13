@@ -46,11 +46,6 @@ void initializeTimer()
 
 Time getProcessCPUTime(void)
 {
-#if !defined(BE_CONSERVATIVE)            &&  \
-       defined(HAVE_CLOCK_GETTIME)       &&  \
-       defined(_SC_CPUTIME)             &&  \
-       defined(CLOCK_PROCESS_CPUTIME_ID) &&  \
-       defined(HAVE_SYSCONF)
     static int checked_sysconf = 0;
     static int sysconf_result = 0;
 
@@ -69,14 +64,18 @@ Time getProcessCPUTime(void)
             stg_exit(EXIT_FAILURE);
         }
     }
-#endif
+    stg_exit(EXIT_FAILURE);
+    /*
 
     // fallback to getrusage
     {
         struct rusage t;
         getrusage(RUSAGE_SELF, &t);
+        // XXX This is not the same as PROCESS_CPU_TIME. That should be utime +
+        // stime.
         return SecondsToTime(t.ru_utime.tv_sec) + USToTime(t.ru_utime.tv_usec);
     }
+    */
 }
 
 StgWord64 getMonotonicNSec(void)
