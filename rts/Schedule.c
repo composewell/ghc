@@ -2385,7 +2385,18 @@ suspendThread (StgRegTable *reg, bool interruptible)
   task = cap->running_task;
   tso = cap->r.rCurrentTSO;
 
-  traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
+  // We are continuing to process the foreign call in this OS thread, therefore
+  // we need to account that as part of this thread.
+
+  // What if the ccall blocks? Then we would be accounting the blocked
+  // time as well in the thread which is wrong.
+
+  // This could be problematic though if the thread can be scheduled
+  // from elsewhere, can it? That would be frought with other problems
+  // though because once the foreign call completes we are going to
+  // return to executing the thread from where we left.
+
+  //traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
 
   // XXX this might not be necessary --SDM
   tso->what_next = ThreadRunGHC;
@@ -2455,7 +2466,7 @@ resumeThread (void *task_)
     incall->suspended_cap = NULL;
     tso->_link = END_TSO_QUEUE; // no write barrier reqd
 
-    traceEventRunThread(cap, tso);
+    // traceEventRunThread(cap, tso);
 
     /* Reset blocking status */
     tso->why_blocked  = NotBlocked;
