@@ -182,6 +182,9 @@ typedef struct StgTSO_ {
 #if defined(mingw32_HOST_OS)
     StgWord32 saved_winerror;
 #endif
+    // Can this go in the thread cost centre stack or a similar data structure
+    // for perf stats? We can enable the use of this using an RTS option.
+    // See compiler/profiling/CostCentre.hs
     StgInt64 cur_sec;
     StgInt64 cur_nsec;
 
