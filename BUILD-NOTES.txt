@@ -1,0 +1,71 @@
+ghcup install ghc 8.6.5
+ghcup set ghc 8.6.5
+cabal install alex-3.2.6
+cabal install happy-1.19.11
+export PATH=~/.cabal/bin:$PATH
+git clone https://gitlab.haskell.org/harendra/ghc.git
+cd ghc
+git checkout thread-timing
+git submodule update --init --recursive
+cp mk/build.mk.sample mk/build.mk
+# Uncomment "flavour = quick" in mk/build.mk
+./boot
+./configure
+make
+./inplace/bin/ghc-stage2
+
+------------------------------------------------------------------------------
+
+# Ensure nix-profile is not in PATH to avoid any nix related issues
+
+# Find alex and happy versions required from aclocal.m4
+# GHC builds often fail because of incorrect happy versions
+# Need to find the correct one if the build fails
+A working configure output:
+
+Configure completed successfully.
+
+   Building GHC version  : 8.8.4
+          Git commit id  : 6cf8f835267581d551ca6695b3b02c34797e2cf4
+
+   Build platform        : x86_64-unknown-linux
+   Host platform         : x86_64-unknown-linux
+   Target platform       : x86_64-unknown-linux
+
+   Bootstrapping using   : /home/harendra/.ghcup/bin/ghc
+      which is version   : 8.6.5
+      with threaded RTS? : YES
+
+   Using (for bootstrapping) : gcc
+   Using gcc                 : gcc
+      which is version       : 8.3.0
+   Building a cross compiler : NO
+   Unregisterised            : NO
+   hs-cpp       : gcc
+   hs-cpp-flags : -E -undef -traditional
+   ar           : ar
+   ld           : ld.gold
+   nm           : nm
+   libtool      :
+   objdump      : objdump
+   ranlib       : ranlib
+   windres      :
+   dllwrap      :
+   genlib       :
+   Happy        : /home/harendra/.cabal/bin/happy (1.19.11)
+   Alex         : /home/harendra/.cabal/bin/alex (3.2.6)
+   Perl         : /usr/bin/perl
+   sphinx-build :
+   xelatex      :
+
+   Using LLVM tools
+      clang : clang
+      llc   : llc-7
+      opt   : opt-7
+
+   HsColour was not found; documentation will not contain source links
+
+   Tools to build Sphinx HTML documentation available: NO
+   Tools to build Sphinx PDF documentation available: NO
+----------------------------------------------------------------------
+
