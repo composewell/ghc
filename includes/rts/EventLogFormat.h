@@ -181,6 +181,12 @@
 
 #define EVENT_USER_BINARY_MSG              181
 
+/* Temporary, custom events
+ * We can perhaps add it to perf events range ultimately.
+ * */
+#define EVENT_PRE_RUN_THREAD           200
+#define EVENT_POST_RUN_THREAD          201
+
 /*
  * The highest event code +1 that ghc itself emits. Note that some event
  * ranges higher than this are reserved but not currently emitted by ghc.

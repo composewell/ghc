@@ -468,6 +468,7 @@ run_thread:
           }
           t->cur_sec -= ts.tv_sec;
           t->cur_nsec -= ts.tv_nsec;
+          traceEventPreRunThread(cap, t, ts.tv_sec, ts.tv_nsec);
           // fprintf (stderr, "BEFORE START: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
           // nsec offset is 128
           //fprintf (stderr, "tso nsec offset: %ld", (char *)(&t->cur_nsec) - (char *)t);
@@ -480,6 +481,7 @@ run_thread:
         if (retval != 0) {
           fprintf (stderr, "clock_gettime after failed");
         } else {
+          traceEventPostRunThread(cap, t, ts.tv_sec, ts.tv_nsec);
           t = cap->r.rCurrentTSO;
           //fprintf (stderr, "sec = %ld nsec = %ld\n", ts.tv_sec, ts.tv_nsec);
           t->cur_sec += ts.tv_sec;

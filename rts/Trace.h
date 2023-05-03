@@ -545,6 +545,22 @@ INLINE_HEADER void traceEventRunThread(Capability *cap STG_UNUSED,
     dtraceRunThread((EventCapNo)cap->no, (EventThreadID)tso->id);
 }
 
+INLINE_HEADER void traceEventPreRunThread(Capability *cap STG_UNUSED,
+                                       StgTSO *tso STG_UNUSED,
+                                       StgWord64 info1 STG_UNUSED,
+                                       StgWord64 info2 STG_UNUSED)
+{
+    traceSchedEvent2(cap, EVENT_PRE_RUN_THREAD, tso, info1, info2);
+}
+
+INLINE_HEADER void traceEventPostRunThread(Capability *cap STG_UNUSED,
+                                       StgTSO *tso STG_UNUSED,
+                                       StgWord64 info1 STG_UNUSED,
+                                       StgWord64 info2 STG_UNUSED)
+{
+    traceSchedEvent2(cap, EVENT_POST_RUN_THREAD, tso, info1, info2);
+}
+
 INLINE_HEADER void traceEventStopThread(Capability          *cap    STG_UNUSED,
                                         StgTSO              *tso    STG_UNUSED,
                                         StgThreadReturnCode  status STG_UNUSED,

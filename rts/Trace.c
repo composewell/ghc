@@ -205,6 +205,12 @@ static void traceSchedEvent_stderr (Capability *cap, EventTypeNum tag,
         debugBelch("cap %d: running thread %" FMT_Word " (%s)\n",
                    cap->no, (W_)tso->id, what_next_strs[tso->what_next]);
         break;
+        /*
+    case EVENT_PRE_RUN_THREAD:      //  (cap, thread)
+        debugBelch("cap %d: thread stats %" FMT_Word " (%s)\n",
+                   cap->no, (W_)tso->id, what_next_strs[tso->what_next]);
+        break;
+        */
     case EVENT_THREAD_RUNNABLE: // (cap, thread)
         debugBelch("cap %d: thread %" FMT_Word " appended to run queue\n",
                    cap->no, (W_)tso->id);

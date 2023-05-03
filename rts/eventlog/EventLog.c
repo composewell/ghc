@@ -105,7 +105,9 @@ char *EventDesc[] = {
   [EVENT_HEAP_PROF_SAMPLE_BEGIN]  = "Start of heap profile sample",
   [EVENT_HEAP_PROF_SAMPLE_STRING] = "Heap profile string sample",
   [EVENT_HEAP_PROF_SAMPLE_COST_CENTRE] = "Heap profile cost-centre sample",
-  [EVENT_USER_BINARY_MSG]     = "User binary message"
+  [EVENT_USER_BINARY_MSG]     = "User binary message",
+  [EVENT_PRE_RUN_THREAD]    = "Run thread stats",
+  [EVENT_POST_RUN_THREAD]   = "Stop thread stats"
 };
 
 // Event type.
@@ -284,6 +286,12 @@ postHeaderEvents(void)
         case EVENT_THREAD_RUNNABLE: // (cap, thread)
         case EVENT_CREATE_SPARK_THREAD: // (cap, spark_thread)
             eventTypes[t].size = sizeof(EventThreadID);
+            break;
+        case EVENT_PRE_RUN_THREAD:  // (cap, thread,stats)
+        case EVENT_POST_RUN_THREAD:  // (cap, thread,stats)
+            eventTypes[t].size = sizeof(EventThreadID)
+                               + sizeof(StgWord64)
+                               + sizeof(StgWord64);
             break;
 
         case EVENT_MIGRATE_THREAD:  // (cap, thread, new_cap)
@@ -617,6 +625,15 @@ postSchedEvent (Capability *cap,
         postThreadID(eb,thread);
         postWord16(eb,info1 /* status */);
         postThreadID(eb,info2 /* blocked on thread */);
+        break;
+    }
+
+    case EVENT_PRE_RUN_THREAD: // (cap, thread, stats)
+    case EVENT_POST_RUN_THREAD: // (cap, thread, stats)
+    {
+        postThreadID(eb,thread);
+        postWord64(eb,info1 /* cpu time sec */);
+        postWord64(eb,info2 /* cpu time nsec */);
         break;
     }
 
