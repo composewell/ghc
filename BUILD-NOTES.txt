@@ -13,6 +13,7 @@ cp mk/build.mk.sample mk/build.mk
 ./configure
 make
 ./inplace/bin/ghc-stage2
+make binary-dist
 
 ------------------------------------------------------------------------------
 
