@@ -8,12 +8,15 @@ cd ghc
 git checkout eventlog-enhancements
 git submodule update --init --recursive
 cp mk/build.mk.sample mk/build.mk
-# Uncomment "flavour = quick" in mk/build.mk
+# Uncomment "BuildFlavour = quick" line in mk/build.mk
 ./boot
 ./configure
 make
 ./inplace/bin/ghc-stage2
 make binary-dist
+
+# For faster incremental builds after changes,
+# uncomment "stage = 2" line in mk/build.mk
 
 ------------------------------------------------------------------------------
 
