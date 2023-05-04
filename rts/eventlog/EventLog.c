@@ -106,8 +106,15 @@ char *EventDesc[] = {
   [EVENT_HEAP_PROF_SAMPLE_STRING] = "Heap profile string sample",
   [EVENT_HEAP_PROF_SAMPLE_COST_CENTRE] = "Heap profile cost-centre sample",
   [EVENT_USER_BINARY_MSG]     = "User binary message",
-  [EVENT_PRE_RUN_THREAD]    = "Run thread stats",
-  [EVENT_POST_RUN_THREAD]   = "Stop thread stats"
+  [EVENT_PRE_RUN_THREAD]    = "Run thread CPU time",
+  [EVENT_PRE_RUN_THREAD_USER]    = "Run thread CPU time user",
+  [EVENT_PRE_RUN_THREAD_SYSTEM]    = "Run thread CPU time system",
+  [EVENT_POST_RUN_THREAD]   = "Stop thread CPU time",
+  [EVENT_POST_RUN_THREAD_USER]    = "Run thread CPU time user",
+  [EVENT_POST_RUN_THREAD_SYSTEM]    = "Run thread CPU time system",
+  [EVENT_THREAD_PAGE_FAULTS]  = "Thread page faults",
+  [EVENT_THREAD_CTX_SWITCHES]  = "Thread context switches",
+  [EVENT_THREAD_IO_BLOCKS]  = "Thread IO operations"
 };
 
 // Event type.
@@ -288,7 +295,14 @@ postHeaderEvents(void)
             eventTypes[t].size = sizeof(EventThreadID);
             break;
         case EVENT_PRE_RUN_THREAD:  // (cap, thread,stats)
+        case EVENT_PRE_RUN_THREAD_USER: // (cap, thread, stats)
+        case EVENT_PRE_RUN_THREAD_SYSTEM: // (cap, thread, stats)
         case EVENT_POST_RUN_THREAD:  // (cap, thread,stats)
+        case EVENT_POST_RUN_THREAD_USER: // (cap, thread, stats)
+        case EVENT_POST_RUN_THREAD_SYSTEM: // (cap, thread, stats)
+        case EVENT_THREAD_PAGE_FAULTS: // (cap, thread, stats)
+        case EVENT_THREAD_CTX_SWITCHES: // (cap, thread, stats)
+        case EVENT_THREAD_IO_BLOCKS: // (cap, thread, stats)
             eventTypes[t].size = sizeof(EventThreadID)
                                + sizeof(StgWord64)
                                + sizeof(StgWord64);
@@ -629,7 +643,14 @@ postSchedEvent (Capability *cap,
     }
 
     case EVENT_PRE_RUN_THREAD: // (cap, thread, stats)
+    case EVENT_PRE_RUN_THREAD_USER: // (cap, thread, stats)
+    case EVENT_PRE_RUN_THREAD_SYSTEM: // (cap, thread, stats)
     case EVENT_POST_RUN_THREAD: // (cap, thread, stats)
+    case EVENT_POST_RUN_THREAD_USER: // (cap, thread, stats)
+    case EVENT_POST_RUN_THREAD_SYSTEM: // (cap, thread, stats)
+    case EVENT_THREAD_PAGE_FAULTS: // (cap, thread, stats)
+    case EVENT_THREAD_CTX_SWITCHES: // (cap, thread, stats)
+    case EVENT_THREAD_IO_BLOCKS: // (cap, thread, stats)
     {
         postThreadID(eb,thread);
         postWord64(eb,info1 /* cpu time sec */);

@@ -63,6 +63,10 @@
 #if defined(TRACING)
 #include "eventlog/EventLog.h"
 #endif
+
+# include <sys/resource.h>
+# include <sys/times.h>
+
 /* -----------------------------------------------------------------------------
  * Global variables
  * -------------------------------------------------------------------------- */
@@ -456,11 +460,67 @@ run_thread:
     {
         StgRegTable *r;
 
-        struct timespec ts;
-        int retval;
+        //int retval0, retval1;
+        struct timespec ts0, ts1;
+        struct rusage ru0, ru1;
+        long count1, count2;
+
         // fprintf (stderr, "ON ENTRY: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
+        // XXX Reduce the window for measurement overhead
+        // Check SMP discrepancy issue
+        // check involuntary context switches using getrusage, what if a
+        // context switch occurs while making this call itself?
+        // What if clock_gettime itself caused a context switch?
+        //retval0 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
+        //XXX rusage may have more overhead than clock_gettime, measure if it
+        //is so.
+        getrusage(RUSAGE_THREAD, &ru0);
+        clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
+        r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
+        clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts1);
+        getrusage(RUSAGE_THREAD, &ru1);
+        // We can report just the difference, but we need the start time and
+        // stop time to find difference between a user event and thread
+        // start/stop.
+        //traceEventPreRunThread(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec);
+        //traceEventPostRunThread(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec);
+        traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
+        traceEventPreRunThreadUser(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec);
+        traceEventPreRunThreadSystem(cap, t, ru0.ru_stime.tv_sec, ru0.ru_stime.tv_usec);
+
+        traceEventPostRunThread(cap, t, ts1.tv_sec, ts1.tv_nsec);
+        traceEventPostRunThreadUser(cap, t, ru1.ru_utime.tv_sec, ru1.ru_utime.tv_usec);
+        traceEventPostRunThreadSystem(cap, t, ru1.ru_stime.tv_sec, ru1.ru_stime.tv_usec);
+
+        count1 = ru1.ru_minflt - ru0.ru_minflt;
+        count2 = ru1.ru_majflt - ru0.ru_majflt;
+        if (count1 > 0 || count2 > 0) {
+          traceEventThreadPageFaults(cap, t, count1, count2);
+        }
+        count1 = ru1.ru_nvcsw - ru0.ru_nvcsw;
+        count2 = ru1.ru_nivcsw - ru0.ru_nivcsw;
+        if (count1 > 0 || count2 > 0) {
+          traceEventThreadCtxSwitches(cap, t, count1, count2);
+        }
+
+        count1 = ru1.ru_inblock - ru0.ru_inblock;
+        count2 = ru1.ru_oublock - ru0.ru_oublock;
+        if (count1 > 0 || count2 > 0) {
+          traceEventThreadIOBlocks(cap, t, count1, count2);
+        }
+
+        /*
+        if (ru1.ru_inblock - ru0.ru_inblock > 0) {
+          fprintf (stderr, "Haskell thread with non-zero inblock\n");
+        }
+        if (ru1.ru_oublock - ru0.ru_oublock > 0) {
+          fprintf (stderr, "Haskell thread with non-zero oublock\n");
+        }
+        */
+
+        /*
         retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
-        if (retval != 0) {
+        if (retval0 != 0) {
           fprintf (stderr, "clock_gettime before failed");
         } else {
           if (t->cur_sec < 0 || t->cur_nsec < 0) {
@@ -468,7 +528,7 @@ run_thread:
           }
           t->cur_sec -= ts.tv_sec;
           t->cur_nsec -= ts.tv_nsec;
-          traceEventPreRunThread(cap, t, ts.tv_sec, ts.tv_nsec);
+          traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
           // fprintf (stderr, "BEFORE START: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
           // nsec offset is 128
           //fprintf (stderr, "tso nsec offset: %ld", (char *)(&t->cur_nsec) - (char *)t);
@@ -476,8 +536,6 @@ run_thread:
           // nsec sizeof = 8
           //fprintf (stderr, "tso nsec size: %d", sizeof(t->cur_nsec));
         };
-        r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
-        retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
         if (retval != 0) {
           fprintf (stderr, "clock_gettime after failed");
         } else {
@@ -499,6 +557,7 @@ run_thread:
           }
           //fprintf (stderr, "acc sec = %ld acc nsec = %ld\n", t->cur_sec, t->cur_nsec);
         }
+        */
 
         cap = regTableToCapability(r);
         ret = r->rRet;
