@@ -5,7 +5,7 @@ cabal install happy-1.19.11
 export PATH=~/.cabal/bin:$PATH
 git clone https://gitlab.haskell.org/harendra/ghc.git
 cd ghc
-git checkout thread-timing
+git checkout eventlog-enhancements
 git submodule update --init --recursive
 cp mk/build.mk.sample mk/build.mk
 # Uncomment "flavour = quick" in mk/build.mk
