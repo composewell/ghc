@@ -67,6 +67,11 @@
 # include <sys/resource.h>
 # include <sys/times.h>
 
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <asm/unistd.h>
+
 /* -----------------------------------------------------------------------------
  * Global variables
  * -------------------------------------------------------------------------- */
@@ -178,6 +183,62 @@ static void deleteThread_(StgTSO *tso);
    ------------------------------------------------------------------------ */
 
 #define TEN_POWER9 1000000000
+
+static long
+perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
+               int cpu, int group_fd, unsigned long flags)
+{
+   int ret;
+
+   ret = syscall(__NR_perf_event_open, hw_event, pid, cpu,
+                  group_fd, flags);
+   return ret;
+}
+
+static int perf_pre_thread_run(void) {
+     struct perf_event_attr pe;
+     int fd;
+
+     memset(&pe, 0, sizeof(struct perf_event_attr));
+     //pe.type = PERF_TYPE_HARDWARE;
+     pe.type = PERF_TYPE_SOFTWARE;
+     pe.size = sizeof(struct perf_event_attr);
+     //pe.config = PERF_COUNT_HW_INSTRUCTIONS;
+     //pe.config = PERF_COUNT_SW_PAGE_FAULTS;
+     pe.config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+     //pe.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
+     pe.disabled = 1;
+     //pe.exclude_kernel = 1;
+     //pe.exclude_hv = 1;
+
+     fd = perf_event_open(&pe, 0, -1, -1, 0);
+     if (fd == -1) {
+        fprintf(stderr, "perf_event_open; error opening counter %llx\n", pe.config);
+        return (-1);
+     }
+
+     /*
+     count = 0;
+     ret = read(fd, &count, sizeof(long long));
+     if (ret == -1) {
+        fprintf(stderr, "Error reading ev count \n");
+        exit(EXIT_FAILURE);
+     }
+     */
+     ioctl(fd, PERF_EVENT_IOC_RESET, 0);
+     ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+     return fd;
+}
+
+static void perf_post_thread_run(int fd, long long* count) {
+     int ret;
+     ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
+     ret = read(fd, count, sizeof(long long));
+     if (ret == -1) {
+        fprintf(stderr, "Error reading perf event count \n");
+     }
+   close(fd);
+}
 
 static Capability *
 schedule (Capability *initialCapability, Task *task)
@@ -446,7 +507,7 @@ run_thread:
     // time as well. Monotonic time may include the time when the kernel
     // thread is on runqueue if the thread gets preempted in the middle.
     // So we cannot get accurate cpu time of the thread.
-    traceEventRunThread(cap, t);
+    //traceEventRunThread(cap, t);
 
     switch (prev_what_next) {
 
@@ -460,104 +521,68 @@ run_thread:
     {
         StgRegTable *r;
 
-        //int retval0, retval1;
+        int retval0, retval1;
+        int retval_ru0, retval_ru1;
         struct timespec ts0, ts1;
         struct rusage ru0, ru1;
         long count1, count2;
+        long long counter;
+        //int counter_fd; // XXX Need to keep the fds open instead of opening and closing every time.
 
-        // fprintf (stderr, "ON ENTRY: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
-        // XXX Reduce the window for measurement overhead
-        // Check SMP discrepancy issue
-        // check involuntary context switches using getrusage, what if a
-        // context switch occurs while making this call itself?
-        // What if clock_gettime itself caused a context switch?
-        //retval0 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
-        //XXX rusage may have more overhead than clock_gettime, measure if it
-        //is so.
-        getrusage(RUSAGE_THREAD, &ru0);
-        clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
+        // A context switch may occur when the getrusage or get_clocktime call
+        // is returning from kernel. However, that should not impact the CPU
+        // time accounting. Though any context switch may impact the wall clock
+        // time accounting. After switching out the OS thread may migrate to
+        // another CPU, which may or may not cause clock discrepancies.
+        //counter_fd = perf_pre_thread_run();
+        retval_ru0 = getrusage(RUSAGE_THREAD, &ru0);
+        retval0 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
-        clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts1);
-        getrusage(RUSAGE_THREAD, &ru1);
-        // We can report just the difference, but we need the start time and
-        // stop time to find difference between a user event and thread
-        // start/stop.
-        //traceEventPreRunThread(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec);
-        //traceEventPostRunThread(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec);
-        traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
-        traceEventPreRunThreadUser(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec);
-        traceEventPreRunThreadSystem(cap, t, ru0.ru_stime.tv_sec, ru0.ru_stime.tv_usec);
+        //perf_post_thread_run(counter_fd, &counter);
+        retval1 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts1);
+        retval_ru1 = getrusage(RUSAGE_THREAD, &ru1);
 
-        traceEventPostRunThread(cap, t, ts1.tv_sec, ts1.tv_nsec);
-        traceEventPostRunThreadUser(cap, t, ru1.ru_utime.tv_sec, ru1.ru_utime.tv_usec);
-        traceEventPostRunThreadSystem(cap, t, ru1.ru_stime.tv_sec, ru1.ru_stime.tv_usec);
-
-        count1 = ru1.ru_minflt - ru0.ru_minflt;
-        count2 = ru1.ru_majflt - ru0.ru_majflt;
-        if (count1 > 0 || count2 > 0) {
-          traceEventThreadPageFaults(cap, t, count1, count2);
-        }
-        count1 = ru1.ru_nvcsw - ru0.ru_nvcsw;
-        count2 = ru1.ru_nivcsw - ru0.ru_nivcsw;
-        if (count1 > 0 || count2 > 0) {
-          traceEventThreadCtxSwitches(cap, t, count1, count2);
-        }
-
-        count1 = ru1.ru_inblock - ru0.ru_inblock;
-        count2 = ru1.ru_oublock - ru0.ru_oublock;
-        if (count1 > 0 || count2 > 0) {
-          traceEventThreadIOBlocks(cap, t, count1, count2);
-        }
-
-        /*
-        if (ru1.ru_inblock - ru0.ru_inblock > 0) {
-          fprintf (stderr, "Haskell thread with non-zero inblock\n");
-        }
-        if (ru1.ru_oublock - ru0.ru_oublock > 0) {
-          fprintf (stderr, "Haskell thread with non-zero oublock\n");
-        }
-        */
-
-        /*
-        retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
-        if (retval0 != 0) {
-          fprintf (stderr, "clock_gettime before failed");
+        if (retval0 != 0 || retval1 !=0 || retval_ru0 != 0 || retval_ru1 != 0)
+        {
+            fprintf (stderr, "An error ocurred during measurement calls\n");
         } else {
-          if (t->cur_sec < 0 || t->cur_nsec < 0) {
-            fprintf (stderr, "ON ENTRY ERROR: t->cur_sec = %ld t->cur_nsec = %ld\n", t->cur_sec, t->cur_nsec);
-          }
-          t->cur_sec -= ts.tv_sec;
-          t->cur_nsec -= ts.tv_nsec;
+          // XXX We can use a single timestamp in all these messages.
+          // We can report just the difference. For now we need the start
+          // time and stop time to find difference between a user event
+          // and thread start/stop. If we use a profiling mechanism to
+          // record the user window timings then we won't need this.
           traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
-          // fprintf (stderr, "BEFORE START: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
-          // nsec offset is 128
-          //fprintf (stderr, "tso nsec offset: %ld", (char *)(&t->cur_nsec) - (char *)t);
-          //exit (1);
-          // nsec sizeof = 8
-          //fprintf (stderr, "tso nsec size: %d", sizeof(t->cur_nsec));
-        };
-        if (retval != 0) {
-          fprintf (stderr, "clock_gettime after failed");
-        } else {
-          traceEventPostRunThread(cap, t, ts.tv_sec, ts.tv_nsec);
-          t = cap->r.rCurrentTSO;
-          //fprintf (stderr, "sec = %ld nsec = %ld\n", ts.tv_sec, ts.tv_nsec);
-          t->cur_sec += ts.tv_sec;
-          t->cur_nsec += ts.tv_nsec;
-          if (t->cur_nsec < 0) {
-            t->cur_nsec += TEN_POWER9;
-            t->cur_sec -= 1;
-          } else if (t->cur_nsec >= TEN_POWER9) {
-            t->cur_nsec -= TEN_POWER9;
-            t->cur_sec += 1;
+          traceEventPreRunThreadUser(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec * 1000);
+          traceEventPreRunThreadSystem(cap, t, ru0.ru_stime.tv_sec, ru0.ru_stime.tv_usec * 1000);
+
+          traceEventPostRunThread(cap, t, ts1.tv_sec, ts1.tv_nsec);
+          traceEventPostRunThreadUser(cap, t, ru1.ru_utime.tv_sec, ru1.ru_utime.tv_usec * 1000);
+          traceEventPostRunThreadSystem(cap, t, ru1.ru_stime.tv_sec, ru1.ru_stime.tv_usec * 1000);
+
+          count1 = ru1.ru_minflt - ru0.ru_minflt;
+          count2 = ru1.ru_majflt - ru0.ru_majflt;
+          if (count1 > 0 || count2 > 0) {
+            traceEventThreadPageFaults(cap, t, count1, count2);
           }
-          // fprintf (stderr, "AFTER DONE: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
-          if (t->cur_sec < 0 || t->cur_nsec < 0) {
-            fprintf (stderr, "ON EXIT ERROR: t->cur_sec = %ld t->cur_nsec = %ld\n", t->cur_sec, t->cur_nsec);
+
+          count1 = ru1.ru_nvcsw - ru0.ru_nvcsw;
+          count2 = ru1.ru_nivcsw - ru0.ru_nivcsw;
+          if (count1 > 0 || count2 > 0) {
+            traceEventThreadCtxSwitches(cap, t, count1, count2);
           }
-          //fprintf (stderr, "acc sec = %ld acc nsec = %ld\n", t->cur_sec, t->cur_nsec);
+
+          count1 = ru1.ru_inblock - ru0.ru_inblock;
+          count2 = ru1.ru_oublock - ru0.ru_oublock;
+          if (count1 > 0 || count2 > 0) {
+            traceEventThreadIOBlocks(cap, t, count1, count2);
+          }
+
+          /*
+          if (counter > 0) {
+            traceEventThreadPageFaults(cap, t, counter, 0);
+          }
+          */
         }
-        */
 
         cap = regTableToCapability(r);
         ret = r->rRet;
@@ -595,16 +620,16 @@ run_thread:
     if (ret == ThreadBlocked) {
         if (t->why_blocked == BlockedOnBlackHole) {
             StgTSO *owner = blackHoleOwner(t->block_info.bh->bh);
-            traceEventStopThread(cap, t, t->why_blocked + 6,
-                                 owner != NULL ? owner->id : 0);
+            //traceEventStopThread(cap, t, t->why_blocked + 6,
+             //                    owner != NULL ? owner->id : 0);
         } else {
-            traceEventStopThread(cap, t, t->why_blocked + 6, 0);
+            //traceEventStopThread(cap, t, t->why_blocked + 6, 0);
         }
     } else {
         if (ret == StackOverflow) {
-          traceEventStopThread(cap, t, ret, t->tot_stack_size);
+          //traceEventStopThread(cap, t, ret, t->tot_stack_size);
         } else {
-          traceEventStopThread(cap, t, ret, 0);
+          //traceEventStopThread(cap, t, ret, 0);
         }
     }
 

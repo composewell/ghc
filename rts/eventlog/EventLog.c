@@ -294,12 +294,14 @@ postHeaderEvents(void)
         case EVENT_CREATE_SPARK_THREAD: // (cap, spark_thread)
             eventTypes[t].size = sizeof(EventThreadID);
             break;
-        case EVENT_PRE_RUN_THREAD:  // (cap, thread,stats)
-        case EVENT_PRE_RUN_THREAD_USER: // (cap, thread, stats)
-        case EVENT_PRE_RUN_THREAD_SYSTEM: // (cap, thread, stats)
-        case EVENT_POST_RUN_THREAD:  // (cap, thread,stats)
-        case EVENT_POST_RUN_THREAD_USER: // (cap, thread, stats)
-        case EVENT_POST_RUN_THREAD_SYSTEM: // (cap, thread, stats)
+        case EVENT_PRE_RUN_THREAD:  // (cap, thread)
+        case EVENT_PRE_RUN_THREAD_USER: // (cap, thread)
+        case EVENT_PRE_RUN_THREAD_SYSTEM: // (cap, thread)
+        case EVENT_POST_RUN_THREAD:  // (cap, thread)
+        case EVENT_POST_RUN_THREAD_USER: // (cap, thread)
+        case EVENT_POST_RUN_THREAD_SYSTEM: // (cap, thread)
+            eventTypes[t].size = sizeof(EventThreadID);
+            break;
         case EVENT_THREAD_PAGE_FAULTS: // (cap, thread, stats)
         case EVENT_THREAD_CTX_SWITCHES: // (cap, thread, stats)
         case EVENT_THREAD_IO_BLOCKS: // (cap, thread, stats)
@@ -642,19 +644,45 @@ postSchedEvent (Capability *cap,
         break;
     }
 
+    case EVENT_THREAD_PAGE_FAULTS: // (cap, thread, stats)
+    case EVENT_THREAD_CTX_SWITCHES: // (cap, thread, stats)
+    case EVENT_THREAD_IO_BLOCKS: // (cap, thread, stats)
+    {
+        postThreadID(eb,thread);
+        postWord64(eb,info1 /* stat1 */);
+        postWord64(eb,info2 /* stat2 */);
+        break;
+    }
+
+    default:
+        barf("postSchedEvent: unknown event tag %d", tag);
+    }
+}
+
+/* Post a time event replacing the event timestamp field with our own
+time field. */
+void
+postSchedTimeEvent (Capability *cap,
+                EventTypeNum tag,
+                StgThreadID thread,
+                StgWord info1, //seconds
+                StgWord info2) // nano-seconds
+{
+    EventsBuf *eb = &capEventBuf[cap->no];
+    ensureRoomForEvent(eb, tag);
+
+    postEventTypeNum(eb, tag);
+    postWord64(eb, info1 * 1000000000 + info2);
+
+    switch (tag) {
     case EVENT_PRE_RUN_THREAD: // (cap, thread, stats)
     case EVENT_PRE_RUN_THREAD_USER: // (cap, thread, stats)
     case EVENT_PRE_RUN_THREAD_SYSTEM: // (cap, thread, stats)
     case EVENT_POST_RUN_THREAD: // (cap, thread, stats)
     case EVENT_POST_RUN_THREAD_USER: // (cap, thread, stats)
     case EVENT_POST_RUN_THREAD_SYSTEM: // (cap, thread, stats)
-    case EVENT_THREAD_PAGE_FAULTS: // (cap, thread, stats)
-    case EVENT_THREAD_CTX_SWITCHES: // (cap, thread, stats)
-    case EVENT_THREAD_IO_BLOCKS: // (cap, thread, stats)
     {
         postThreadID(eb,thread);
-        postWord64(eb,info1 /* cpu time sec */);
-        postWord64(eb,info2 /* cpu time nsec */);
         break;
     }
 
@@ -1077,6 +1105,7 @@ void postCapMsg(Capability *cap, char *msg, va_list ap)
 void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
 {
     const size_t size = strlen(msg);
+    struct timespec ts0;
     if (size > EVENT_PAYLOAD_SIZE_MAX) {
         errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
         return;
@@ -1092,7 +1121,10 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
         }
     }
 
-    postEventHeader(eb, type);
+    //postEventHeader(eb, type);
+    clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
+    postEventTypeNum(eb, type);
+    postWord64(eb, ts0.tv_sec * 1000000000 + ts0.tv_nsec);
     postPayloadSize(eb, size);
     postBuf(eb, (StgWord8*) msg, size);
 }

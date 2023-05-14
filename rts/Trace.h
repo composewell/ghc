@@ -88,12 +88,19 @@ void traceEnd (void);
 
 #if defined(TRACING)
 
+void traceSchedTimeEvent_ (Capability *cap, EventTypeNum tag,
+                       StgTSO *tso, StgWord info1, StgWord info2);
 /*
  * Record a scheduler event
  */
 #define traceSchedEvent(cap, tag, tso, other)   \
     if (RTS_UNLIKELY(TRACE_sched)) {            \
         traceSchedEvent_(cap, tag, tso, other, 0); \
+    }
+
+#define traceSchedTimeEvent(cap, tag, tso, info1, info2) \
+    if (RTS_UNLIKELY(TRACE_sched)) {            \
+        traceSchedTimeEvent_(cap, tag, tso, info1, info2); \
     }
 
 #define traceSchedEvent2(cap, tag, tso, info1, info2) \
@@ -305,6 +312,7 @@ void flushTrace(void);
 #else /* !TRACING */
 
 #define traceSchedEvent(cap, tag, tso, other) /* nothing */
+#define traceSchedTimeEvent(cap, tag, tso, other, info) /* nothing */
 #define traceSchedEvent2(cap, tag, tso, other, info) /* nothing */
 #define traceGcEvent(cap, tag) /* nothing */
 #define traceGcEventAtT(cap, ts, tag) /* nothing */
@@ -550,7 +558,7 @@ INLINE_HEADER void traceEventPreRunThread(Capability *cap STG_UNUSED,
                                        StgWord64 info1 STG_UNUSED,
                                        StgWord64 info2 STG_UNUSED)
 {
-    traceSchedEvent2(cap, EVENT_PRE_RUN_THREAD, tso, info1, info2);
+    traceSchedTimeEvent(cap, EVENT_PRE_RUN_THREAD, tso, info1, info2);
 }
 
 INLINE_HEADER void traceEventPreRunThreadUser(Capability *cap STG_UNUSED,
@@ -558,7 +566,7 @@ INLINE_HEADER void traceEventPreRunThreadUser(Capability *cap STG_UNUSED,
                                        StgWord64 info1 STG_UNUSED,
                                        StgWord64 info2 STG_UNUSED)
 {
-    traceSchedEvent2(cap, EVENT_PRE_RUN_THREAD_USER, tso, info1, info2);
+    traceSchedTimeEvent(cap, EVENT_PRE_RUN_THREAD_USER, tso, info1, info2);
 }
 
 INLINE_HEADER void traceEventPreRunThreadSystem(Capability *cap STG_UNUSED,
@@ -566,7 +574,7 @@ INLINE_HEADER void traceEventPreRunThreadSystem(Capability *cap STG_UNUSED,
                                        StgWord64 info1 STG_UNUSED,
                                        StgWord64 info2 STG_UNUSED)
 {
-    traceSchedEvent2(cap, EVENT_PRE_RUN_THREAD_SYSTEM, tso, info1, info2);
+    traceSchedTimeEvent(cap, EVENT_PRE_RUN_THREAD_SYSTEM, tso, info1, info2);
 }
 
 INLINE_HEADER void traceEventPostRunThread(Capability *cap STG_UNUSED,
@@ -574,7 +582,7 @@ INLINE_HEADER void traceEventPostRunThread(Capability *cap STG_UNUSED,
                                        StgWord64 info1 STG_UNUSED,
                                        StgWord64 info2 STG_UNUSED)
 {
-    traceSchedEvent2(cap, EVENT_POST_RUN_THREAD, tso, info1, info2);
+    traceSchedTimeEvent(cap, EVENT_POST_RUN_THREAD, tso, info1, info2);
 }
 
 INLINE_HEADER void traceEventPostRunThreadUser(Capability *cap STG_UNUSED,
@@ -582,7 +590,7 @@ INLINE_HEADER void traceEventPostRunThreadUser(Capability *cap STG_UNUSED,
                                        StgWord64 info1 STG_UNUSED,
                                        StgWord64 info2 STG_UNUSED)
 {
-    traceSchedEvent2(cap, EVENT_POST_RUN_THREAD_USER, tso, info1, info2);
+    traceSchedTimeEvent(cap, EVENT_POST_RUN_THREAD_USER, tso, info1, info2);
 }
 
 INLINE_HEADER void traceEventPostRunThreadSystem(Capability *cap STG_UNUSED,
@@ -590,7 +598,7 @@ INLINE_HEADER void traceEventPostRunThreadSystem(Capability *cap STG_UNUSED,
                                        StgWord64 info1 STG_UNUSED,
                                        StgWord64 info2 STG_UNUSED)
 {
-    traceSchedEvent2(cap, EVENT_POST_RUN_THREAD_SYSTEM, tso, info1, info2);
+    traceSchedTimeEvent(cap, EVENT_POST_RUN_THREAD_SYSTEM, tso, info1, info2);
 }
 
 INLINE_HEADER void traceEventThreadPageFaults(Capability *cap STG_UNUSED,

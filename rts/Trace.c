@@ -290,6 +290,18 @@ void traceSchedEvent_ (Capability *cap, EventTypeNum tag,
         postSchedEvent(cap,tag,tso ? tso->id : 0, info1, info2);
     }
 }
+void traceSchedTimeEvent_ (Capability *cap, EventTypeNum tag,
+                       StgTSO *tso, StgWord info1, StgWord info2)
+{
+#if defined(DEBUG)
+    if (RtsFlags.TraceFlags.tracing == TRACE_STDERR) {
+        traceSchedEvent_stderr(cap, tag, tso, info1, info2);
+    } else
+#endif
+    {
+        postSchedTimeEvent(cap,tag,tso ? tso->id : 0, info1, info2);
+    }
+}
 
 #if defined(DEBUG)
 static void traceGcEvent_stderr (Capability *cap, EventTypeNum tag)
