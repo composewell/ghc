@@ -537,6 +537,23 @@ run_thread:
         //counter_fd = perf_pre_thread_run();
         retval_ru0 = getrusage(RUSAGE_THREAD, &ru0);
         retval0 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
+
+#ifndef DELAY_THREAD_STATS
+        // This may add some overhead time. But it is required for measuring
+        // the timing of user windows inside the thread. When a window ends we
+        // need to subtract the thread start stat from it.
+        if (retval0 != 0)
+        {
+            fprintf (stderr, "An error ocurred during measurement calls\n");
+        } else {
+          // XXX We can use a single timestamp in all these messages.
+          // We can report just the difference. For now we need the start
+          // time and stop time to find difference between a user event
+          // and thread start/stop. If we use a profiling mechanism to
+          // record the user window timings then we won't need this.
+          traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
+        }
+#endif
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
         //perf_post_thread_run(counter_fd, &counter);
         retval1 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts1);
@@ -551,7 +568,9 @@ run_thread:
           // time and stop time to find difference between a user event
           // and thread start/stop. If we use a profiling mechanism to
           // record the user window timings then we won't need this.
+#ifdef DELAY_THREAD_STATS
           traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
+#endif
           traceEventPreRunThreadUser(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec * 1000);
           traceEventPreRunThreadSystem(cap, t, ru0.ru_stime.tv_sec, ru0.ru_stime.tv_usec * 1000);
 
