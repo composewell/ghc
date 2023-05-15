@@ -184,62 +184,6 @@ static void deleteThread_(StgTSO *tso);
 
 #define TEN_POWER9 1000000000
 
-static long
-perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
-               int cpu, int group_fd, unsigned long flags)
-{
-   int ret;
-
-   ret = syscall(__NR_perf_event_open, hw_event, pid, cpu,
-                  group_fd, flags);
-   return ret;
-}
-
-static int perf_pre_thread_run(void) {
-     struct perf_event_attr pe;
-     int fd;
-
-     memset(&pe, 0, sizeof(struct perf_event_attr));
-     //pe.type = PERF_TYPE_HARDWARE;
-     pe.type = PERF_TYPE_SOFTWARE;
-     pe.size = sizeof(struct perf_event_attr);
-     //pe.config = PERF_COUNT_HW_INSTRUCTIONS;
-     //pe.config = PERF_COUNT_SW_PAGE_FAULTS;
-     pe.config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
-     //pe.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
-     pe.disabled = 1;
-     //pe.exclude_kernel = 1;
-     //pe.exclude_hv = 1;
-
-     fd = perf_event_open(&pe, 0, -1, -1, 0);
-     if (fd == -1) {
-        fprintf(stderr, "perf_event_open; error opening counter %llx\n", pe.config);
-        return (-1);
-     }
-
-     /*
-     count = 0;
-     ret = read(fd, &count, sizeof(long long));
-     if (ret == -1) {
-        fprintf(stderr, "Error reading ev count \n");
-        exit(EXIT_FAILURE);
-     }
-     */
-     ioctl(fd, PERF_EVENT_IOC_RESET, 0);
-     ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
-     return fd;
-}
-
-static void perf_post_thread_run(int fd, long long* count) {
-     int ret;
-     ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-     ret = read(fd, count, sizeof(long long));
-     if (ret == -1) {
-        fprintf(stderr, "Error reading perf event count \n");
-     }
-   close(fd);
-}
-
 static Capability *
 schedule (Capability *initialCapability, Task *task)
 {
@@ -521,20 +465,19 @@ run_thread:
     {
         StgRegTable *r;
 
-        int retval0, retval1;
-        int retval_ru0, retval_ru1;
-        struct timespec ts0, ts1;
-        struct rusage ru0, ru1;
-        long count1, count2;
+        //int retval0, retval1;
+        //int retval_ru0, retval_ru1;
+        //struct timespec ts0, ts1;
+        //struct rusage ru0, ru1;
+        //long count1, count2;
         long long counter;
-        //int counter_fd; // XXX Need to keep the fds open instead of opening and closing every time.
 
+        /*
         // A context switch may occur when the getrusage or get_clocktime call
         // is returning from kernel. However, that should not impact the CPU
         // time accounting. Though any context switch may impact the wall clock
         // time accounting. After switching out the OS thread may migrate to
         // another CPU, which may or may not cause clock discrepancies.
-        //counter_fd = perf_pre_thread_run();
         retval_ru0 = getrusage(RUSAGE_THREAD, &ru0);
         retval0 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
 
@@ -554,8 +497,24 @@ run_thread:
           traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
         }
 #endif
+        */
+        // XXX perform counter ops only when eventlog is enabled.
+        counter = 0;
+        perf_start_counter(task->counter_fd, &counter);
+        //fprintf (stderr, "start counter: %lld\n", counter);
+        traceEventPreRunThread(cap, t, 0, counter);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
-        //perf_post_thread_run(counter_fd, &counter);
+        counter = 0;
+        perf_stop_counter(task->counter_fd, &counter);
+        //fprintf (stderr, "stop counter: %lld\n", counter);
+        traceEventPostRunThread(cap, t, 0, counter);
+        /*
+        if (counter > 0) {
+          traceEventThreadPageFaults(cap, t, counter, 0);
+        }
+        */
+
+        /*
         retval1 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts1);
         retval_ru1 = getrusage(RUSAGE_THREAD, &ru1);
 
@@ -595,13 +554,8 @@ run_thread:
           if (count1 > 0 || count2 > 0) {
             traceEventThreadIOBlocks(cap, t, count1, count2);
           }
-
-          /*
-          if (counter > 0) {
-            traceEventThreadPageFaults(cap, t, counter, 0);
-          }
-          */
         }
+        */
 
         cap = regTableToCapability(r);
         ret = r->rRet;

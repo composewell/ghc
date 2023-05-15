@@ -25,6 +25,11 @@
 #include <signal.h>
 #endif
 
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <asm/unistd.h>
+
 // Task lists and global counters.
 // Locks required: all_tasks_mutex.
 Task *all_tasks = NULL;
@@ -199,6 +204,97 @@ freeTask (Task *task)
     stgFree(task);
 }
 
+static long
+perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
+               int cpu, int group_fd, unsigned long flags)
+{
+   int ret;
+
+   ret = syscall(__NR_perf_event_open, hw_event, pid, cpu,
+                  group_fd, flags);
+   return ret;
+}
+
+// XXX Do this only when eventlog is enabled.
+static int perf_init_counter(void) {
+     struct perf_event_attr pe;
+     int fd;
+
+     memset(&pe, 0, sizeof(struct perf_event_attr));
+     pe.type = PERF_TYPE_SOFTWARE;
+     pe.config = PERF_COUNT_SW_TASK_CLOCK;
+     //pe.config = PERF_COUNT_SW_PAGE_FAULTS;
+     //pe.config = PERF_COUNT_SW_PAGE_FAULTS_MIN;
+     //pe.config = PERF_COUNT_SW_CONTEXT_SWITCHES;
+
+     //pe.type = PERF_TYPE_HARDWARE;
+     //pe.config = PERF_COUNT_HW_INSTRUCTIONS;
+     //
+     pe.size = sizeof(struct perf_event_attr);
+     pe.disabled = 1;
+     //pe.exclude_kernel = 1;
+     //pe.exclude_hv = 1;
+
+     fd = perf_event_open(&pe, 0, -1, -1, 0);
+     if (fd == -1) {
+        fprintf(stderr, "perf_event_open; error opening counter %llx\n", pe.config);
+        return (-1);
+     }
+
+     return fd;
+}
+
+void perf_reset_counter(int fd) {
+     int ret;
+
+     if (fd != -1)
+     {
+       ioctl(fd, PERF_EVENT_IOC_RESET, 0);
+       /*
+       ret = read(fd, count, sizeof(long long));
+       if (ret == -1) {
+          fprintf(stderr, "Error reading perf event count \n");
+       }
+       */
+       ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+     } else {
+          fprintf(stderr, "perf_reset_counter: fd not set \n");
+     }
+}
+
+void perf_start_counter(int fd, long long* count) {
+     int ret;
+
+     if (fd != -1)
+     {
+       ret = read(fd, count, sizeof(long long));
+       if (ret == -1) {
+          fprintf(stderr, "perf_start_counter: Error reading perf event count \n");
+       }
+       ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+     } else {
+          fprintf(stderr, "perf_start_counter: fd not set \n");
+     }
+}
+
+void perf_stop_counter(int fd, long long* count) {
+     int ret;
+     if (fd != -1)
+     {
+       ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
+       ret = read(fd, count, sizeof(long long));
+       if (ret == -1) {
+          fprintf(stderr, "perf_stop_counter: Error reading perf event count \n");
+       }
+     } else {
+          fprintf(stderr, "perf_stop_counter: fd not set \n");
+     }
+}
+
+static void perf_close_counter(int fd) {
+   close(fd);
+}
+
 /* Must take all_tasks_mutex */
 static Task*
 newTask (bool worker)
@@ -216,6 +312,7 @@ newTask (bool worker)
     task->spare_incalls = NULL;
     task->incall        = NULL;
     task->preferred_capability = -1;
+    task->counter_fd = -1;
 
 #if defined(THREADED_RTS)
     initCondition(&task->cond);
@@ -309,6 +406,8 @@ newBoundTask (void)
     task = getTask();
 
     task->stopped = false;
+
+    task->counter_fd = perf_init_counter();
 
     newInCall(task);
 
@@ -433,6 +532,8 @@ workerStart(Task *task)
     if (RtsFlags.GcFlags.numa && !RtsFlags.DebugFlags.numa) {
         setThreadNode(numa_map[task->node]);
     }
+
+    task->counter_fd = perf_init_counter();
 
     // set the thread-local pointer to the Task:
     setMyTask(task);
