@@ -158,6 +158,7 @@ typedef struct Task_ {
     // if >= 0, this Capability will be used for in-calls
     int preferred_capability;
     int counter_fd;
+    int counter_event_type;
 
     // Links tasks on the returning_tasks queue of a Capability, and
     // on spare_workers.
@@ -347,6 +348,7 @@ serialisableTaskId (Task *task)
 }
 
 void perf_reset_counter(int fd);
+void perf_read_counter(int fd, long long* count);
 void perf_start_counter(int fd, long long* count);
 void perf_stop_counter(int fd, long long* count);
 #include "EndPrivate.h"

@@ -64,13 +64,13 @@
 #include "eventlog/EventLog.h"
 #endif
 
-# include <sys/resource.h>
-# include <sys/times.h>
-
+#define LINUX_PERF_EVENTS
+#ifdef LINUX_PERF_EVENTS
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/perf_event.h>
 #include <asm/unistd.h>
+#endif
 
 /* -----------------------------------------------------------------------------
  * Global variables
@@ -451,7 +451,9 @@ run_thread:
     // time as well. Monotonic time may include the time when the kernel
     // thread is on runqueue if the thread gets preempted in the middle.
     // So we cannot get accurate cpu time of the thread.
-    //traceEventRunThread(cap, t);
+#ifndef LINUX_PERF_EVENTS
+    traceEventRunThread(cap, t);
+#endif
 
     switch (prev_what_next) {
 
@@ -465,97 +467,35 @@ run_thread:
     {
         StgRegTable *r;
 
-        //int retval0, retval1;
-        //int retval_ru0, retval_ru1;
-        //struct timespec ts0, ts1;
-        //struct rusage ru0, ru1;
-        //long count1, count2;
+#ifdef LINUX_PERF_EVENTS
         long long counter;
 
         /*
-        // A context switch may occur when the getrusage or get_clocktime call
-        // is returning from kernel. However, that should not impact the CPU
-        // time accounting. Though any context switch may impact the wall clock
-        // time accounting. After switching out the OS thread may migrate to
-        // another CPU, which may or may not cause clock discrepancies.
-        retval_ru0 = getrusage(RUSAGE_THREAD, &ru0);
-        retval0 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
+         * A context switch may occur when the counter ioctl call is
+         * returning from kernel. However, that should not impact the
+         * CPU time accounting. Though any context switch may impact the
+         * wall clock time accounting. After switching out the OS thread
+         * may migrate to another CPU, which may or may not cause clock
+         * discrepancies.
+         */
 
-#ifndef DELAY_THREAD_STATS
-        // This may add some overhead time. But it is required for measuring
-        // the timing of user windows inside the thread. When a window ends we
-        // need to subtract the thread start stat from it.
-        if (retval0 != 0)
-        {
-            fprintf (stderr, "An error ocurred during measurement calls\n");
-        } else {
-          // XXX We can use a single timestamp in all these messages.
-          // We can report just the difference. For now we need the start
-          // time and stop time to find difference between a user event
-          // and thread start/stop. If we use a profiling mechanism to
-          // record the user window timings then we won't need this.
-          traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
-        }
-#endif
-        */
         // XXX perform counter ops only when eventlog is enabled.
         counter = 0;
         perf_start_counter(task->counter_fd, &counter);
         //fprintf (stderr, "start counter: %lld\n", counter);
-        traceEventPreRunThread(cap, t, 0, counter);
+        // We can post the event after the measurement window as
+        // well because this may add some overhead time. But it is
+        // required for measuring the timing of user windows inside the
+        // thread.
+        traceEventThreadCounter(cap, t, task->counter_event_type, counter);
+#endif
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
+#ifdef LINUX_PERF_EVENTS
         counter = 0;
         perf_stop_counter(task->counter_fd, &counter);
         //fprintf (stderr, "stop counter: %lld\n", counter);
-        traceEventPostRunThread(cap, t, 0, counter);
-        /*
-        if (counter > 0) {
-          traceEventThreadPageFaults(cap, t, counter, 0);
-        }
-        */
-
-        /*
-        retval1 = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts1);
-        retval_ru1 = getrusage(RUSAGE_THREAD, &ru1);
-
-        if (retval0 != 0 || retval1 !=0 || retval_ru0 != 0 || retval_ru1 != 0)
-        {
-            fprintf (stderr, "An error ocurred during measurement calls\n");
-        } else {
-          // XXX We can use a single timestamp in all these messages.
-          // We can report just the difference. For now we need the start
-          // time and stop time to find difference between a user event
-          // and thread start/stop. If we use a profiling mechanism to
-          // record the user window timings then we won't need this.
-#ifdef DELAY_THREAD_STATS
-          traceEventPreRunThread(cap, t, ts0.tv_sec, ts0.tv_nsec);
+        traceEventThreadCounter(cap, t, task->counter_event_type+1, counter);
 #endif
-          traceEventPreRunThreadUser(cap, t, ru0.ru_utime.tv_sec, ru0.ru_utime.tv_usec * 1000);
-          traceEventPreRunThreadSystem(cap, t, ru0.ru_stime.tv_sec, ru0.ru_stime.tv_usec * 1000);
-
-          traceEventPostRunThread(cap, t, ts1.tv_sec, ts1.tv_nsec);
-          traceEventPostRunThreadUser(cap, t, ru1.ru_utime.tv_sec, ru1.ru_utime.tv_usec * 1000);
-          traceEventPostRunThreadSystem(cap, t, ru1.ru_stime.tv_sec, ru1.ru_stime.tv_usec * 1000);
-
-          count1 = ru1.ru_minflt - ru0.ru_minflt;
-          count2 = ru1.ru_majflt - ru0.ru_majflt;
-          if (count1 > 0 || count2 > 0) {
-            traceEventThreadPageFaults(cap, t, count1, count2);
-          }
-
-          count1 = ru1.ru_nvcsw - ru0.ru_nvcsw;
-          count2 = ru1.ru_nivcsw - ru0.ru_nivcsw;
-          if (count1 > 0 || count2 > 0) {
-            traceEventThreadCtxSwitches(cap, t, count1, count2);
-          }
-
-          count1 = ru1.ru_inblock - ru0.ru_inblock;
-          count2 = ru1.ru_oublock - ru0.ru_oublock;
-          if (count1 > 0 || count2 > 0) {
-            traceEventThreadIOBlocks(cap, t, count1, count2);
-          }
-        }
-        */
 
         cap = regTableToCapability(r);
         ret = r->rRet;
@@ -590,21 +530,23 @@ run_thread:
     t->saved_winerror = GetLastError();
 #endif
 
+#ifndef LINUX_PERF_EVENTS
     if (ret == ThreadBlocked) {
         if (t->why_blocked == BlockedOnBlackHole) {
             StgTSO *owner = blackHoleOwner(t->block_info.bh->bh);
-            //traceEventStopThread(cap, t, t->why_blocked + 6,
-             //                    owner != NULL ? owner->id : 0);
+            traceEventStopThread(cap, t, t->why_blocked + 6,
+                                 owner != NULL ? owner->id : 0);
         } else {
-            //traceEventStopThread(cap, t, t->why_blocked + 6, 0);
+            traceEventStopThread(cap, t, t->why_blocked + 6, 0);
         }
     } else {
         if (ret == StackOverflow) {
-          //traceEventStopThread(cap, t, ret, t->tot_stack_size);
+          traceEventStopThread(cap, t, ret, t->tot_stack_size);
         } else {
-          //traceEventStopThread(cap, t, ret, 0);
+          traceEventStopThread(cap, t, ret, 0);
         }
     }
+#endif
 
     ASSERT_FULL_CAPABILITY_INVARIANTS(cap,task);
     ASSERT(t->cap == cap);

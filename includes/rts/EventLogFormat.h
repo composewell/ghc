@@ -183,24 +183,20 @@
 
 /* Temporary, custom events
  * We can perhaps add it to perf events range ultimately.
+ * POST event must be PRE event+1
  * */
-#define EVENT_PRE_RUN_THREAD           200
-#define EVENT_POST_RUN_THREAD          201
-#define EVENT_THREAD_PAGE_FAULTS       202
-#define EVENT_THREAD_CTX_SWITCHES      203
-#define EVENT_THREAD_IO_BLOCKS         204
-#define EVENT_PRE_RUN_THREAD_RU        205
-#define EVENT_POST_RUN_THREAD_RU       206
-#define EVENT_PRE_RUN_THREAD_USER      207
-#define EVENT_PRE_RUN_THREAD_SYSTEM    208
-#define EVENT_POST_RUN_THREAD_USER     209
-#define EVENT_POST_RUN_THREAD_SYSTEM   210
+#define EVENT_PRE_THREAD_CLOCK           200
+#define EVENT_POST_THREAD_CLOCK          201
+#define EVENT_PRE_THREAD_PAGE_FAULTS     202
+#define EVENT_POST_THREAD_PAGE_FAULTS    203
+#define EVENT_PRE_THREAD_CTX_SWITCHES    204
+#define EVENT_POST_THREAD_CTX_SWITCHES   205
 /*
  * The highest event code +1 that ghc itself emits. Note that some event
  * ranges higher than this are reserved but not currently emitted by ghc.
  * This must match the size of the EventDesc[] array in EventLog.c
  */
-#define NUM_GHC_EVENT_TAGS        211
+#define NUM_GHC_EVENT_TAGS        206
 
 #if 0  /* DEPRECATED EVENTS: */
 /* we don't actually need to record the thread, it's implicit */

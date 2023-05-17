@@ -34,8 +34,8 @@ void moreCapEventBufs (uint32_t from, uint32_t to);
  */
 void postSchedEvent(Capability *cap, EventTypeNum tag,
                     StgThreadID id, StgWord info1, StgWord info2);
-void postSchedTimeEvent(Capability *cap, EventTypeNum tag,
-                    StgThreadID id, StgWord info1, StgWord info2);
+void postSchedCounterEvent(Capability *cap, EventTypeNum tag,
+                    StgThreadID id, StgWord info1);
 
 /*
  * Post a nullary event.

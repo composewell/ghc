@@ -205,42 +205,6 @@ static void traceSchedEvent_stderr (Capability *cap, EventTypeNum tag,
         debugBelch("cap %d: running thread %" FMT_Word " (%s)\n",
                    cap->no, (W_)tso->id, what_next_strs[tso->what_next]);
         break;
-    case EVENT_PRE_RUN_THREAD:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " pre-cpu (sec %ld), (nsec %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
-    case EVENT_PRE_RUN_THREAD_USER:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " pre-user (sec %ld), (usec %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
-    case EVENT_PRE_RUN_THREAD_SYSTEM:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " pre-system (sec %ld), (usec %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
-    case EVENT_POST_RUN_THREAD:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " post cpu (sec %ld), (nsec %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
-    case EVENT_POST_RUN_THREAD_USER:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " post user (sec %ld), (usec %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
-    case EVENT_POST_RUN_THREAD_SYSTEM:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " post system (sec %ld), (usec %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
-    case EVENT_THREAD_PAGE_FAULTS:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " page faults (minor %ld), (major %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
-    case EVENT_THREAD_CTX_SWITCHES:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " ctx switches (vcsw %ld), (ivcsw %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
-    case EVENT_THREAD_IO_BLOCKS:      //  (cap, thread)
-        debugBelch("cap %d: thread %" FMT_Word " iops (inblocks %ld), (oublocks %ld)\n",
-                   cap->no, (W_)tso->id, (long)info1, (long)info2);
-        break;
     case EVENT_THREAD_RUNNABLE: // (cap, thread)
         debugBelch("cap %d: thread %" FMT_Word " appended to run queue\n",
                    cap->no, (W_)tso->id);
@@ -290,16 +254,17 @@ void traceSchedEvent_ (Capability *cap, EventTypeNum tag,
         postSchedEvent(cap,tag,tso ? tso->id : 0, info1, info2);
     }
 }
-void traceSchedTimeEvent_ (Capability *cap, EventTypeNum tag,
-                       StgTSO *tso, StgWord info1, StgWord info2)
+
+void traceSchedCounterEvent_ (Capability *cap, EventTypeNum tag,
+                       StgTSO *tso, StgWord info1)
 {
 #if defined(DEBUG)
     if (RtsFlags.TraceFlags.tracing == TRACE_STDERR) {
-        traceSchedEvent_stderr(cap, tag, tso, info1, info2);
+        traceSchedEvent_stderr(cap, tag, tso, info1, 0);
     } else
 #endif
     {
-        postSchedTimeEvent(cap,tag,tso ? tso->id : 0, info1, info2);
+        postSchedCounterEvent(cap,tag,tso ? tso->id : 0, info1);
     }
 }
 

@@ -88,8 +88,8 @@ void traceEnd (void);
 
 #if defined(TRACING)
 
-void traceSchedTimeEvent_ (Capability *cap, EventTypeNum tag,
-                       StgTSO *tso, StgWord info1, StgWord info2);
+void traceSchedCounterEvent_ (Capability *cap, EventTypeNum tag,
+                       StgTSO *tso, StgWord info1);
 /*
  * Record a scheduler event
  */
@@ -98,9 +98,9 @@ void traceSchedTimeEvent_ (Capability *cap, EventTypeNum tag,
         traceSchedEvent_(cap, tag, tso, other, 0); \
     }
 
-#define traceSchedTimeEvent(cap, tag, tso, info1, info2) \
+#define traceSchedCounterEvent(cap, tag, tso, other) \
     if (RTS_UNLIKELY(TRACE_sched)) {            \
-        traceSchedTimeEvent_(cap, tag, tso, info1, info2); \
+        traceSchedCounterEvent_(cap, tag, tso, other); \
     }
 
 #define traceSchedEvent2(cap, tag, tso, info1, info2) \
@@ -312,7 +312,7 @@ void flushTrace(void);
 #else /* !TRACING */
 
 #define traceSchedEvent(cap, tag, tso, other) /* nothing */
-#define traceSchedTimeEvent(cap, tag, tso, other, info) /* nothing */
+#define traceSchedCounterEvent(cap, tag, tso, other) /* nothing */
 #define traceSchedEvent2(cap, tag, tso, other, info) /* nothing */
 #define traceGcEvent(cap, tag) /* nothing */
 #define traceGcEventAtT(cap, ts, tag) /* nothing */
@@ -553,76 +553,15 @@ INLINE_HEADER void traceEventRunThread(Capability *cap STG_UNUSED,
     dtraceRunThread((EventCapNo)cap->no, (EventThreadID)tso->id);
 }
 
-INLINE_HEADER void traceEventPreRunThread(Capability *cap STG_UNUSED,
+// This does not log the timestamp, instead logs the counter in the timestamp
+// field. Logging the timestamp requires making a system call which is
+// expensive and may affect the counters we are measuring.
+INLINE_HEADER void traceEventThreadCounter(Capability *cap STG_UNUSED,
                                        StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
+                                       int event_type STG_UNUSED,
+                                       StgWord64 info1 STG_UNUSED)
 {
-    traceSchedTimeEvent(cap, EVENT_PRE_RUN_THREAD, tso, info1, info2);
-}
-
-INLINE_HEADER void traceEventPreRunThreadUser(Capability *cap STG_UNUSED,
-                                       StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
-{
-    traceSchedTimeEvent(cap, EVENT_PRE_RUN_THREAD_USER, tso, info1, info2);
-}
-
-INLINE_HEADER void traceEventPreRunThreadSystem(Capability *cap STG_UNUSED,
-                                       StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
-{
-    traceSchedTimeEvent(cap, EVENT_PRE_RUN_THREAD_SYSTEM, tso, info1, info2);
-}
-
-INLINE_HEADER void traceEventPostRunThread(Capability *cap STG_UNUSED,
-                                       StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
-{
-    traceSchedTimeEvent(cap, EVENT_POST_RUN_THREAD, tso, info1, info2);
-}
-
-INLINE_HEADER void traceEventPostRunThreadUser(Capability *cap STG_UNUSED,
-                                       StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
-{
-    traceSchedTimeEvent(cap, EVENT_POST_RUN_THREAD_USER, tso, info1, info2);
-}
-
-INLINE_HEADER void traceEventPostRunThreadSystem(Capability *cap STG_UNUSED,
-                                       StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
-{
-    traceSchedTimeEvent(cap, EVENT_POST_RUN_THREAD_SYSTEM, tso, info1, info2);
-}
-
-INLINE_HEADER void traceEventThreadPageFaults(Capability *cap STG_UNUSED,
-                                       StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
-{
-    traceSchedEvent2(cap, EVENT_THREAD_PAGE_FAULTS, tso, info1, info2);
-}
-
-INLINE_HEADER void traceEventThreadCtxSwitches(Capability *cap STG_UNUSED,
-                                       StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
-{
-    traceSchedEvent2(cap, EVENT_THREAD_CTX_SWITCHES, tso, info1, info2);
-}
-
-INLINE_HEADER void traceEventThreadIOBlocks(Capability *cap STG_UNUSED,
-                                       StgTSO *tso STG_UNUSED,
-                                       StgWord64 info1 STG_UNUSED,
-                                       StgWord64 info2 STG_UNUSED)
-{
-    traceSchedEvent2(cap, EVENT_THREAD_IO_BLOCKS, tso, info1, info2);
+    traceSchedCounterEvent(cap, event_type, tso, info1);
 }
 
 INLINE_HEADER void traceEventStopThread(Capability          *cap    STG_UNUSED,

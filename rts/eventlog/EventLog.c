@@ -106,15 +106,12 @@ char *EventDesc[] = {
   [EVENT_HEAP_PROF_SAMPLE_STRING] = "Heap profile string sample",
   [EVENT_HEAP_PROF_SAMPLE_COST_CENTRE] = "Heap profile cost-centre sample",
   [EVENT_USER_BINARY_MSG]     = "User binary message",
-  [EVENT_PRE_RUN_THREAD]    = "Run thread CPU time",
-  [EVENT_PRE_RUN_THREAD_USER]    = "Run thread CPU time user",
-  [EVENT_PRE_RUN_THREAD_SYSTEM]    = "Run thread CPU time system",
-  [EVENT_POST_RUN_THREAD]   = "Stop thread CPU time",
-  [EVENT_POST_RUN_THREAD_USER]    = "Run thread CPU time user",
-  [EVENT_POST_RUN_THREAD_SYSTEM]    = "Run thread CPU time system",
-  [EVENT_THREAD_PAGE_FAULTS]  = "Thread page faults",
-  [EVENT_THREAD_CTX_SWITCHES]  = "Thread context switches",
-  [EVENT_THREAD_IO_BLOCKS]  = "Thread IO operations"
+  [EVENT_PRE_THREAD_CLOCK]    = "Run thread start CPU time",
+  [EVENT_POST_THREAD_CLOCK]    = "Run thread stop CPU time",
+  [EVENT_PRE_THREAD_PAGE_FAULTS]  = "Run thread start page faults",
+  [EVENT_POST_THREAD_PAGE_FAULTS] = "Run thread stop page faults",
+  [EVENT_PRE_THREAD_CTX_SWITCHES]  = "Run thread start ctx switches",
+  [EVENT_POST_THREAD_CTX_SWITCHES] = "Run thread stop ctx switches",
 };
 
 // Event type.
@@ -294,20 +291,13 @@ postHeaderEvents(void)
         case EVENT_CREATE_SPARK_THREAD: // (cap, spark_thread)
             eventTypes[t].size = sizeof(EventThreadID);
             break;
-        case EVENT_PRE_RUN_THREAD:  // (cap, thread)
-        case EVENT_PRE_RUN_THREAD_USER: // (cap, thread)
-        case EVENT_PRE_RUN_THREAD_SYSTEM: // (cap, thread)
-        case EVENT_POST_RUN_THREAD:  // (cap, thread)
-        case EVENT_POST_RUN_THREAD_USER: // (cap, thread)
-        case EVENT_POST_RUN_THREAD_SYSTEM: // (cap, thread)
+        case EVENT_PRE_THREAD_CLOCK:  // (cap, thread)
+        case EVENT_POST_THREAD_CLOCK:  // (cap, thread)
+        case EVENT_PRE_THREAD_PAGE_FAULTS:  // (cap, thread)
+        case EVENT_POST_THREAD_PAGE_FAULTS:  // (cap, thread)
+        case EVENT_PRE_THREAD_CTX_SWITCHES:  // (cap, thread)
+        case EVENT_POST_THREAD_CTX_SWITCHES:  // (cap, thread)
             eventTypes[t].size = sizeof(EventThreadID);
-            break;
-        case EVENT_THREAD_PAGE_FAULTS: // (cap, thread, stats)
-        case EVENT_THREAD_CTX_SWITCHES: // (cap, thread, stats)
-        case EVENT_THREAD_IO_BLOCKS: // (cap, thread, stats)
-            eventTypes[t].size = sizeof(EventThreadID)
-                               + sizeof(StgWord64)
-                               + sizeof(StgWord64);
             break;
 
         case EVENT_MIGRATE_THREAD:  // (cap, thread, new_cap)
@@ -644,51 +634,27 @@ postSchedEvent (Capability *cap,
         break;
     }
 
-    case EVENT_THREAD_PAGE_FAULTS: // (cap, thread, stats)
-    case EVENT_THREAD_CTX_SWITCHES: // (cap, thread, stats)
-    case EVENT_THREAD_IO_BLOCKS: // (cap, thread, stats)
-    {
-        postThreadID(eb,thread);
-        postWord64(eb,info1 /* stat1 */);
-        postWord64(eb,info2 /* stat2 */);
-        break;
-    }
-
     default:
         barf("postSchedEvent: unknown event tag %d", tag);
     }
 }
 
-/* Post a time event replacing the event timestamp field with our own
-time field. */
+/*
+ * Post a time event replacing the event timestamp field with a counter value
+ */
 void
-postSchedTimeEvent (Capability *cap,
+postSchedCounterEvent (Capability *cap,
                 EventTypeNum tag,
                 StgThreadID thread,
-                StgWord info1, //seconds
-                StgWord info2) // nano-seconds
+                StgWord info1 //counter value
+                )
 {
     EventsBuf *eb = &capEventBuf[cap->no];
     ensureRoomForEvent(eb, tag);
 
     postEventTypeNum(eb, tag);
-    postWord64(eb, info1 * 1000000000 + info2);
-
-    switch (tag) {
-    case EVENT_PRE_RUN_THREAD: // (cap, thread, stats)
-    case EVENT_PRE_RUN_THREAD_USER: // (cap, thread, stats)
-    case EVENT_PRE_RUN_THREAD_SYSTEM: // (cap, thread, stats)
-    case EVENT_POST_RUN_THREAD: // (cap, thread, stats)
-    case EVENT_POST_RUN_THREAD_USER: // (cap, thread, stats)
-    case EVENT_POST_RUN_THREAD_SYSTEM: // (cap, thread, stats)
-    {
-        postThreadID(eb,thread);
-        break;
-    }
-
-    default:
-        barf("postSchedEvent: unknown event tag %d", tag);
-    }
+    postWord64(eb, info1);
+    postThreadID(eb,thread);
 }
 
 void
@@ -1105,7 +1071,7 @@ void postCapMsg(Capability *cap, char *msg, va_list ap)
 void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
 {
     const size_t size = strlen(msg);
-    struct timespec ts0;
+    long long counter;
     if (size > EVENT_PAYLOAD_SIZE_MAX) {
         errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
         return;
@@ -1122,9 +1088,11 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     }
 
     //postEventHeader(eb, type);
-    clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts0);
+    // Counter is already started, we just need to read the counter value
+    perf_read_counter (cap->running_task->counter_fd, &counter);
     postEventTypeNum(eb, type);
-    postWord64(eb, ts0.tv_sec * 1000000000 + ts0.tv_nsec);
+    postWord64(eb, counter);
+    // postWord32 (eb, cap->rCurrentTSO->id);
     postPayloadSize(eb, size);
     postBuf(eb, (StgWord8*) msg, size);
 }
