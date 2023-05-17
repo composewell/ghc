@@ -184,6 +184,31 @@ static void deleteThread_(StgTSO *tso);
 
 #define TEN_POWER9 1000000000
 
+/*
+ * XXX Somehow there is a discrepancy of 1024 bytes per thread in
+ * total_allocated bytes added by the stgRun window and actual total_allocated
+ * bytes. When a new thread starts it has already incremented 1024 bytes before
+ * stgRun is called on it.
+ */
+static void traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
+{
+    bdescr *bd;
+    long long allocated;
+
+    allocated = cap->total_allocated;
+
+    // Add unfinished nursery blocks
+    bd = cap->r.rCurrentNursery;
+    if (bd) {
+      allocated += bd->free - bd->start;
+    }
+    bd = cap->r.rCurrentAlloc;
+    if (bd) {
+      allocated += bd->free - bd->start;
+    }
+    traceEventThreadCounter(cap, t, event, allocated * sizeof(W_));
+}
+
 static Capability *
 schedule (Capability *initialCapability, Task *task)
 {
@@ -470,6 +495,7 @@ run_thread:
 #ifdef LINUX_PERF_EVENTS
         long long counter;
 
+        traceEventAllocated(cap, t, EVENT_PRE_THREAD_ALLOCATED);
         /*
          * A context switch may occur when the counter ioctl call is
          * returning from kernel. However, that should not impact the
@@ -486,7 +512,8 @@ run_thread:
         // We can post the event after the measurement window as
         // well because this may add some overhead time. But it is
         // required for measuring the timing of user windows inside the
-        // thread.
+        // thread. XXX Now that we use the yield based mechanism for window
+        // measurements we can emit just one event after the thread is done.
         traceEventThreadCounter(cap, t, task->counter_event_type, counter);
 #endif
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
@@ -495,6 +522,7 @@ run_thread:
         perf_stop_counter(task->counter_fd, &counter);
         //fprintf (stderr, "stop counter: %lld\n", counter);
         traceEventThreadCounter(cap, t, task->counter_event_type+1, counter);
+        traceEventAllocated(cap, t, EVENT_POST_THREAD_ALLOCATED);
 #endif
 
         cap = regTableToCapability(r);

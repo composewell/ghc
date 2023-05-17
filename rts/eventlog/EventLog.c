@@ -112,6 +112,8 @@ char *EventDesc[] = {
   [EVENT_POST_THREAD_PAGE_FAULTS] = "Run thread stop page faults",
   [EVENT_PRE_THREAD_CTX_SWITCHES]  = "Run thread start ctx switches",
   [EVENT_POST_THREAD_CTX_SWITCHES] = "Run thread stop ctx switches",
+  [EVENT_PRE_THREAD_ALLOCATED]  = "Run thread start allocations",
+  [EVENT_POST_THREAD_ALLOCATED] = "Run thread stop allocations",
 };
 
 // Event type.
@@ -297,6 +299,8 @@ postHeaderEvents(void)
         case EVENT_POST_THREAD_PAGE_FAULTS:  // (cap, thread)
         case EVENT_PRE_THREAD_CTX_SWITCHES:  // (cap, thread)
         case EVENT_POST_THREAD_CTX_SWITCHES:  // (cap, thread)
+        case EVENT_PRE_THREAD_ALLOCATED:  // (cap, thread)
+        case EVENT_POST_THREAD_ALLOCATED:  // (cap, thread)
             eventTypes[t].size = sizeof(EventThreadID);
             break;
 
