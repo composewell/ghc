@@ -9,6 +9,8 @@ git checkout eventlog-enhancements
 git submodule update --init --recursive
 cp mk/build.mk.sample mk/build.mk
 # Uncomment "BuildFlavour = quick" line in mk/build.mk
+# sudo apt-get install autotools-dev
+# sudo apt-get install autoconf
 ./boot
 ./configure
 make
