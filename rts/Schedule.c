@@ -9,6 +9,7 @@
 #include "PosixSource.h"
 #define KEEP_LOCKCLOSURE
 #include "Rts.h"
+#include "RtsFlags.h"
 
 #include "sm/Storage.h"
 #include "RtsUtils.h"
@@ -207,6 +208,57 @@ static void traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
       allocated += bd->free - bd->start;
     }
     traceEventThreadCounter(cap, t, event, allocated * sizeof(W_));
+}
+
+static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
+{
+#ifdef LINUX_PERF_EVENTS
+    long long counter;
+    bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
+                    rtsConfig.eventlog_writer != NULL;
+
+    if (eventlog_enabled)
+    {
+        traceEventAllocated(cap, t, EVENT_PRE_THREAD_ALLOCATED);
+        /*
+         * A context switch may occur when the counter ioctl call is
+         * returning from kernel. However, that should not impact the
+         * CPU time accounting. Though any context switch may impact the
+         * wall clock time accounting. After switching out the OS thread
+         * may migrate to another CPU, which may or may not cause clock
+         * discrepancies.
+         */
+
+        // XXX perform counter ops only when eventlog is enabled.
+        counter = 0;
+        perf_start_counter(task->counter_fd, &counter);
+        //fprintf (stderr, "start counter: %lld\n", counter);
+        // We can post the event after the measurement window as
+        // well because this may add some overhead time. But it is
+        // required for measuring the timing of user windows inside the
+        // thread. XXX Now that we use the yield based mechanism for window
+        // measurements we can emit just one event after the thread is done.
+        traceEventThreadCounter(cap, t, task->counter_event_type, counter);
+    }
+#endif
+}
+
+static void traceEventCounterStop (Capability *cap, Task* task, StgTSO *t)
+{
+#ifdef LINUX_PERF_EVENTS
+    long long counter;
+    bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
+                    rtsConfig.eventlog_writer != NULL;
+
+    if (eventlog_enabled)
+    {
+        counter = 0;
+        perf_stop_counter(task->counter_fd, &counter);
+        //fprintf (stderr, "stop counter: %lld\n", counter);
+        traceEventThreadCounter(cap, t, task->counter_event_type+1, counter);
+        traceEventAllocated(cap, t, EVENT_POST_THREAD_ALLOCATED);
+    }
+#endif
 }
 
 static Capability *
@@ -492,39 +544,9 @@ run_thread:
     {
         StgRegTable *r;
 
-#ifdef LINUX_PERF_EVENTS
-        long long counter;
-
-        traceEventAllocated(cap, t, EVENT_PRE_THREAD_ALLOCATED);
-        /*
-         * A context switch may occur when the counter ioctl call is
-         * returning from kernel. However, that should not impact the
-         * CPU time accounting. Though any context switch may impact the
-         * wall clock time accounting. After switching out the OS thread
-         * may migrate to another CPU, which may or may not cause clock
-         * discrepancies.
-         */
-
-        // XXX perform counter ops only when eventlog is enabled.
-        counter = 0;
-        perf_start_counter(task->counter_fd, &counter);
-        //fprintf (stderr, "start counter: %lld\n", counter);
-        // We can post the event after the measurement window as
-        // well because this may add some overhead time. But it is
-        // required for measuring the timing of user windows inside the
-        // thread. XXX Now that we use the yield based mechanism for window
-        // measurements we can emit just one event after the thread is done.
-        traceEventThreadCounter(cap, t, task->counter_event_type, counter);
-#endif
+        traceEventCounterStart (cap, task, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
-#ifdef LINUX_PERF_EVENTS
-        counter = 0;
-        perf_stop_counter(task->counter_fd, &counter);
-        //fprintf (stderr, "stop counter: %lld\n", counter);
-        traceEventThreadCounter(cap, t, task->counter_event_type+1, counter);
-        traceEventAllocated(cap, t, EVENT_POST_THREAD_ALLOCATED);
-#endif
-
+        traceEventCounterStop (cap, task, t);
         cap = regTableToCapability(r);
         ret = r->rRet;
         break;
