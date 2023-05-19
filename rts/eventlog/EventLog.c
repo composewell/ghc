@@ -16,6 +16,7 @@
 #include "RtsUtils.h"
 #include "Stats.h"
 #include "EventLog.h"
+#include "sm/Storage.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -1072,17 +1073,14 @@ void postCapMsg(Capability *cap, char *msg, va_list ap)
     postLogMsg(&capEventBuf[cap->no], EVENT_LOG_MSG, msg, ap);
 }
 
-void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
+static void postCounterEvent(StgWord32 tid, EventsBuf *eb, StgWord64 counter,
+      int counter_event_type, EventTypeNum type, size_t size, char *msg)
 {
-    const size_t size = strlen(msg);
-    long long counter;
-    if (size > EVENT_PAYLOAD_SIZE_MAX) {
-        errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
-        return;
-    }
-
-    EventsBuf *eb = &capEventBuf[cap->no];
     if (!hasRoomForVariableEvent(eb, size)){
+        // XXX we should make room in the buffer before the thread
+        // starts running, and just bail out here if there is no
+        // room. If we bail out we need a uniquifier for the bracket in
+        // order to detect dropped events.
         printAndClearEventBuf(eb);
 
         if (!hasRoomForVariableEvent(eb, size)){
@@ -1091,14 +1089,39 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
         }
     }
 
+    // header
+    postEventTypeNum(eb, type);
+    postWord64(eb, counter);
+
+    // payload
+    postPayloadSize(eb, size);
+    postWord32 (eb, tid);
+    postWord16(eb, counter_event_type);
+    postBuf(eb, (StgWord8*) msg, (size - 6));
+}
+
+void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
+{
+    const size_t size = strlen(msg);
+    size_t required = size + 6;
+    StgWord32 tid = cap->r.rCurrentTSO->id;
+    StgWord64 counter;
+    if (size > EVENT_PAYLOAD_SIZE_MAX) {
+        errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
+        return;
+    }
+    EventsBuf *eb = &capEventBuf[cap->no];
+
     //postEventHeader(eb, type);
     // Counter is already started, we just need to read the counter value
     perf_read_counter (cap->running_task->counter_fd, &counter);
-    postEventTypeNum(eb, type);
-    postWord64(eb, counter);
-    // postWord32 (eb, cap->rCurrentTSO->id);
-    postPayloadSize(eb, size);
-    postBuf(eb, (StgWord8*) msg, size);
+    postCounterEvent (tid, eb, counter, cap->running_task->counter_event_type,
+          type, required, msg);
+    counter = getCurrentAllocated (cap);
+    // We translate the PRE to POST in the event processor if this is window
+    // end message.
+    postCounterEvent (tid, eb, counter * sizeof (W_),
+          EVENT_PRE_THREAD_ALLOCATED, type, required, msg);
 }
 
 void postUserBinaryEvent(Capability   *cap,

@@ -95,6 +95,9 @@ INLINE_HEADER void newNurseryBlock (bdescr *bd) {
 void    updateNurseriesStats (void);
 StgWord calcTotalAllocated   (void);
 
+StgWord64
+getCurrentAllocated (Capability *cap);
+
 /* -----------------------------------------------------------------------------
    Stats 'n' DEBUG stuff
    -------------------------------------------------------------------------- */

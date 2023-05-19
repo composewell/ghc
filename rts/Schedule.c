@@ -187,26 +187,19 @@ static void deleteThread_(StgTSO *tso);
 
 /*
  * XXX Somehow there is a discrepancy of 1024 bytes per thread in
- * total_allocated bytes added by the stgRun window and actual total_allocated
- * bytes. When a new thread starts it has already incremented 1024 bytes before
- * stgRun is called on it.
+ * total_allocated bytes computed by the stgRun window and actual
+ * total_allocated bytes. When a new thread starts it has already
+ * incremented 1024 bytes before stgRun is called on it.
+ *
+ * To remove this discrepancy we can add an allocated event at thread
+ * create time.
  */
-static void traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
+static void
+traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
 {
-    bdescr *bd;
-    long long allocated;
+    StgWord64 allocated;
 
-    allocated = cap->total_allocated;
-
-    // Add unfinished nursery blocks
-    bd = cap->r.rCurrentNursery;
-    if (bd) {
-      allocated += bd->free - bd->start;
-    }
-    bd = cap->r.rCurrentAlloc;
-    if (bd) {
-      allocated += bd->free - bd->start;
-    }
+    allocated = getCurrentAllocated (cap);
     traceEventThreadCounter(cap, t, event, allocated * sizeof(W_));
 }
 
