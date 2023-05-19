@@ -348,7 +348,7 @@ serialisableTaskId (Task *task)
 }
 
 void perf_reset_counter(int fd);
-void perf_read_counter(int fd, long long* count);
-void perf_start_counter(int fd, long long* count);
-void perf_stop_counter(int fd, long long* count);
+void perf_read_counter(int fd, StgWord64* count);
+void perf_start_counter(int fd, StgWord64* count);
+void perf_stop_counter(int fd, StgWord64* count);
 #include "EndPrivate.h"

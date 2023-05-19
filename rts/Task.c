@@ -258,12 +258,12 @@ void perf_reset_counter(int fd) {
      }
 }
 
-void perf_read_counter(int fd, long long* count) {
+void perf_read_counter(int fd, StgWord64* count) {
      int ret;
 
      if (fd != -1)
      {
-       ret = read(fd, count, sizeof(long long));
+       ret = read(fd, count, sizeof(StgWord64));
        if (ret == -1) {
           fprintf(stderr, "perf_read_counter: Error reading perf event count \n");
        }
@@ -272,12 +272,12 @@ void perf_read_counter(int fd, long long* count) {
      }
 }
 
-void perf_start_counter(int fd, long long* count) {
+void perf_start_counter(int fd, StgWord64* count) {
      int ret;
 
      if (fd != -1)
      {
-       ret = read(fd, count, sizeof(long long));
+       ret = read(fd, count, sizeof(StgWord64));
        if (ret == -1) {
           fprintf(stderr, "perf_start_counter: Error reading perf event count \n");
        }
@@ -287,12 +287,12 @@ void perf_start_counter(int fd, long long* count) {
      }
 }
 
-void perf_stop_counter(int fd, long long* count) {
+void perf_stop_counter(int fd, StgWord64* count) {
      int ret;
      if (fd != -1)
      {
        ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
-       ret = read(fd, count, sizeof(long long));
+       ret = read(fd, count, sizeof(StgWord64));
        if (ret == -1) {
           fprintf(stderr, "perf_stop_counter: Error reading perf event count \n");
        }

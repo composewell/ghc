@@ -206,7 +206,7 @@ traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
 static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
 {
 #ifdef LINUX_PERF_EVENTS
-    long long counter;
+    StgWord64 counter;
     bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
                     rtsConfig.eventlog_writer != NULL;
 
@@ -239,7 +239,7 @@ static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
 static void traceEventCounterStop (Capability *cap, Task* task, StgTSO *t)
 {
 #ifdef LINUX_PERF_EVENTS
-    long long counter;
+    StgWord64 counter;
     bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
                     rtsConfig.eventlog_writer != NULL;
 
