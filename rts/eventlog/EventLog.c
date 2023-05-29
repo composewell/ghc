@@ -115,6 +115,22 @@ char *EventDesc[] = {
   [EVENT_POST_THREAD_CTX_SWITCHES] = "Run thread stop ctx switches",
   [EVENT_PRE_THREAD_ALLOCATED]  = "Run thread start allocations",
   [EVENT_POST_THREAD_ALLOCATED] = "Run thread stop allocations",
+  [EVENT_PRE_HW_CACHE_L1I]  = "Run thread start l1i hit",
+  [EVENT_POST_HW_CACHE_L1I] = "Run thread stop l1i hit",
+  [EVENT_PRE_HW_CACHE_L1I_MISS]  = "Run thread start l1i miss",
+  [EVENT_POST_HW_CACHE_L1I_MISS] = "Run thread stop l1i miss",
+  [EVENT_PRE_HW_CACHE_L1D]  = "Run thread start l1i hit",
+  [EVENT_POST_HW_CACHE_L1D] = "Run thread stop l1i hit",
+  [EVENT_PRE_HW_CACHE_L1D_MISS]  = "Run thread start l1i miss",
+  [EVENT_POST_HW_CACHE_L1D_MISS] = "Run thread stop l1i miss",
+  [EVENT_PRE_HW_CACHE_MISSES]  = "Run thread start last level cache misses",
+  [EVENT_POST_HW_CACHE_MISSES] = "Run thread stop last level cache misses",
+  [EVENT_PRE_HW_INSTRUCTIONS]  = "Run thread start instructions ",
+  [EVENT_POST_HW_INSTRUCTIONS] = "Run thread stop instructions",
+  [EVENT_PRE_HW_BRANCH_MISSES]  = "Run thread start branch misses",
+  [EVENT_POST_HW_BRANCH_MISSES] = "Run thread stop branch misses",
+  [EVENT_PRE_THREAD_CPU_MIGRATIONS]  = "Run thread start cpu migrations",
+  [EVENT_POST_THREAD_CPU_MIGRATIONS] = "Run thread stop cpu migrations",
 };
 
 // Event type.
@@ -1105,7 +1121,20 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     const size_t size = strlen(msg);
     size_t required = size + 6;
     StgWord32 tid = cap->r.rCurrentTSO->id;
-    StgWord64 counter;
+
+    StgWord64 task_clock_counter;
+    StgWord64 l1i_counter;
+    StgWord64 l1i_miss_counter;
+    StgWord64 l1d_counter;
+    StgWord64 l1d_miss_counter;
+    StgWord64 cache_misses_counter;
+    StgWord64 instructions_counter;
+    StgWord64 branch_misses_counter;
+    StgWord64 page_faults_counter;
+    StgWord64 cpu_migrations_counter;
+    StgWord64 ctx_switches_counter;
+    StgWord64 alloc_counter;
+
     if (size > EVENT_PAYLOAD_SIZE_MAX) {
         errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
         return;
@@ -1114,13 +1143,44 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
 
     //postEventHeader(eb, type);
     // Counter is already started, we just need to read the counter value
-    perf_read_counter (cap->running_task->counter_fd, &counter);
-    postCounterEvent (tid, eb, counter, cap->running_task->counter_event_type,
+    perf_read_counter (cap->running_task->task_clock_counter_fd, &task_clock_counter);
+    perf_read_counter (cap->running_task->l1i_counter_fd, &l1i_counter);
+    perf_read_counter (cap->running_task->l1i_miss_counter_fd, &l1i_miss_counter);
+    perf_read_counter (cap->running_task->l1d_counter_fd, &l1d_counter);
+    perf_read_counter (cap->running_task->l1d_miss_counter_fd, &l1d_miss_counter);
+    perf_read_counter (cap->running_task->cache_misses_counter_fd, &cache_misses_counter);
+    perf_read_counter (cap->running_task->instructions_counter_fd, &instructions_counter);
+    perf_read_counter (cap->running_task->branch_misses_counter_fd, &branch_misses_counter);
+    perf_read_counter (cap->running_task->page_faults_counter_fd, &page_faults_counter);
+    perf_read_counter (cap->running_task->cpu_migrations_counter_fd, &cpu_migrations_counter);
+    perf_read_counter (cap->running_task->ctx_switches_counter_fd, &ctx_switches_counter);
+
+    postCounterEvent (tid, eb, task_clock_counter, cap->running_task->task_clock_counter_event_type,
           type, required, msg);
-    counter = getCurrentAllocated (cap);
+    postCounterEvent (tid, eb, l1i_counter, cap->running_task->l1i_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, l1i_miss_counter, cap->running_task->l1i_miss_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, l1d_counter, cap->running_task->l1d_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, l1d_miss_counter, cap->running_task->l1d_miss_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, cache_misses_counter, cap->running_task->cache_misses_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, instructions_counter, cap->running_task->instructions_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, branch_misses_counter, cap->running_task->branch_misses_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, page_faults_counter, cap->running_task->page_faults_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, cpu_migrations_counter, cap->running_task->cpu_migrations_counter_event_type,
+          type, required, msg);
+    postCounterEvent (tid, eb, ctx_switches_counter, cap->running_task->ctx_switches_counter_event_type,
+          type, required, msg);
+    alloc_counter = getCurrentAllocated (cap);
     // We translate the PRE to POST in the event processor if this is window
     // end message.
-    postCounterEvent (tid, eb, counter * sizeof (W_),
+    postCounterEvent (tid, eb, alloc_counter * sizeof (W_),
           EVENT_PRE_THREAD_ALLOCATED, type, required, msg);
 }
 

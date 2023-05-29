@@ -157,8 +157,30 @@ typedef struct Task_ {
 
     // if >= 0, this Capability will be used for in-calls
     int preferred_capability;
-    int counter_fd;
-    int counter_event_type;
+
+    int task_clock_counter_fd;
+    int l1i_counter_fd;
+    int l1i_miss_counter_fd;
+    int l1d_counter_fd;
+    int l1d_miss_counter_fd;
+    int cache_misses_counter_fd;
+    int instructions_counter_fd;
+    int branch_misses_counter_fd;
+    int page_faults_counter_fd;
+    int cpu_migrations_counter_fd;
+    int ctx_switches_counter_fd;
+
+    int task_clock_counter_event_type;
+    int l1i_counter_event_type;
+    int l1i_miss_counter_event_type;
+    int l1d_counter_event_type;
+    int l1d_miss_counter_event_type;
+    int cache_misses_counter_event_type;
+    int instructions_counter_event_type;
+    int branch_misses_counter_event_type;
+    int page_faults_counter_event_type;
+    int cpu_migrations_counter_event_type;
+    int ctx_switches_counter_event_type;
 
     // Links tasks on the returning_tasks queue of a Capability, and
     // on spare_workers.

@@ -193,12 +193,29 @@
 #define EVENT_POST_THREAD_CTX_SWITCHES   205
 #define EVENT_PRE_THREAD_ALLOCATED       206
 #define EVENT_POST_THREAD_ALLOCATED      207
+#define EVENT_PRE_HW_CACHE_L1I           208
+#define EVENT_POST_HW_CACHE_L1I          209
+#define EVENT_PRE_HW_CACHE_L1I_MISS      210
+#define EVENT_POST_HW_CACHE_L1I_MISS     211
+#define EVENT_PRE_HW_CACHE_L1D           212
+#define EVENT_POST_HW_CACHE_L1D          213
+#define EVENT_PRE_HW_CACHE_L1D_MISS      214
+#define EVENT_POST_HW_CACHE_L1D_MISS     215
+#define EVENT_PRE_HW_CACHE_MISSES        216
+#define EVENT_POST_HW_CACHE_MISSES       217
+#define EVENT_PRE_HW_INSTRUCTIONS        218
+#define EVENT_POST_HW_INSTRUCTIONS       219
+#define EVENT_PRE_HW_BRANCH_MISSES       220
+#define EVENT_POST_HW_BRANCH_MISSES      221
+#define EVENT_PRE_THREAD_CPU_MIGRATIONS  222
+#define EVENT_POST_THREAD_CPU_MIGRATIONS 223
+
 /*
  * The highest event code +1 that ghc itself emits. Note that some event
  * ranges higher than this are reserved but not currently emitted by ghc.
  * This must match the size of the EventDesc[] array in EventLog.c
  */
-#define NUM_GHC_EVENT_TAGS        208
+#define NUM_GHC_EVENT_TAGS        224
 
 #if 0  /* DEPRECATED EVENTS: */
 /* we don't actually need to record the thread, it's implicit */

@@ -206,7 +206,18 @@ traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
 static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
 {
 #ifdef LINUX_PERF_EVENTS
-    StgWord64 counter;
+    StgWord64 task_clock_counter;
+    StgWord64 l1i_counter;
+    StgWord64 l1i_miss_counter;
+    StgWord64 l1d_counter;
+    StgWord64 l1d_miss_counter;
+    StgWord64 cache_misses_counter;
+    StgWord64 instructions_counter;
+    StgWord64 branch_misses_counter;
+    StgWord64 page_faults_counter;
+    StgWord64 cpu_migrations_counter;
+    StgWord64 ctx_switches_counter;
+
     bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
                     rtsConfig.eventlog_writer != NULL;
 
@@ -223,15 +234,47 @@ static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
          */
 
         // XXX perform counter ops only when eventlog is enabled.
-        counter = 0;
-        perf_start_counter(task->counter_fd, &counter);
+        task_clock_counter = 0;
+        l1i_counter = 0;
+        l1i_miss_counter = 0;
+        l1d_counter = 0;
+        l1d_miss_counter = 0;
+        cache_misses_counter = 0;
+        instructions_counter = 0;
+        branch_misses_counter = 0;
+        page_faults_counter = 0;
+        cpu_migrations_counter = 0;
+        ctx_switches_counter = 0;
+
+        perf_start_counter(task->task_clock_counter_fd, &task_clock_counter);
+        perf_start_counter(task->l1i_counter_fd, &l1i_counter);
+        perf_start_counter(task->l1i_miss_counter_fd, &l1i_miss_counter);
+        perf_start_counter(task->l1d_counter_fd, &l1d_counter);
+        perf_start_counter(task->l1d_miss_counter_fd, &l1d_miss_counter);
+        perf_start_counter(task->cache_misses_counter_fd, &cache_misses_counter);
+        perf_start_counter(task->instructions_counter_fd, &instructions_counter);
+        perf_start_counter(task->branch_misses_counter_fd, &branch_misses_counter);
+        perf_start_counter(task->page_faults_counter_fd, &page_faults_counter);
+        perf_start_counter(task->cpu_migrations_counter_fd, &cpu_migrations_counter);
+        perf_start_counter(task->ctx_switches_counter_fd, &ctx_switches_counter);    
+
         //fprintf (stderr, "start counter: %lld\n", counter);
         // We can post the event after the measurement window as
         // well because this may add some overhead time. But it is
         // required for measuring the timing of user windows inside the
         // thread. XXX Now that we use the yield based mechanism for window
         // measurements we can emit just one event after the thread is done.
-        traceEventThreadCounter(cap, t, task->counter_event_type, counter);
+        traceEventThreadCounter(cap, t, task->task_clock_counter_event_type, task_clock_counter);
+        traceEventThreadCounter(cap, t, task->l1i_counter_event_type, l1i_counter);
+        traceEventThreadCounter(cap, t, task->l1i_miss_counter_event_type, l1i_miss_counter);
+        traceEventThreadCounter(cap, t, task->l1d_counter_event_type, l1d_counter);
+        traceEventThreadCounter(cap, t, task->l1d_miss_counter_event_type, l1d_miss_counter);
+        traceEventThreadCounter(cap, t, task->cache_misses_counter_event_type, cache_misses_counter);
+        traceEventThreadCounter(cap, t, task->instructions_counter_event_type, instructions_counter);
+        traceEventThreadCounter(cap, t, task->branch_misses_counter_event_type, branch_misses_counter);
+        traceEventThreadCounter(cap, t, task->page_faults_counter_event_type, page_faults_counter);
+        traceEventThreadCounter(cap, t, task->cpu_migrations_counter_event_type, cpu_migrations_counter);
+        traceEventThreadCounter(cap, t, task->ctx_switches_counter_event_type, ctx_switches_counter);
     }
 #endif
 }
@@ -239,16 +282,60 @@ static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
 static void traceEventCounterStop (Capability *cap, Task* task, StgTSO *t)
 {
 #ifdef LINUX_PERF_EVENTS
-    StgWord64 counter;
+    StgWord64 task_clock_counter;
+    StgWord64 l1i_counter;
+    StgWord64 l1i_miss_counter;
+    StgWord64 l1d_counter;
+    StgWord64 l1d_miss_counter;
+    StgWord64 cache_misses_counter;
+    StgWord64 instructions_counter;
+    StgWord64 branch_misses_counter;
+    StgWord64 page_faults_counter;
+    StgWord64 cpu_migrations_counter;
+    StgWord64 ctx_switches_counter;
+
     bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
                     rtsConfig.eventlog_writer != NULL;
 
     if (eventlog_enabled)
     {
-        counter = 0;
-        perf_stop_counter(task->counter_fd, &counter);
+        task_clock_counter = 0;
+        l1i_counter = 0;
+        l1i_miss_counter = 0;
+        l1d_counter = 0;
+        l1d_miss_counter = 0;
+        cache_misses_counter = 0;
+        instructions_counter = 0;
+        branch_misses_counter = 0;
+        page_faults_counter = 0;
+        cpu_migrations_counter = 0;
+        ctx_switches_counter = 0;
+
+        perf_stop_counter(task->task_clock_counter_fd, &task_clock_counter);
+        perf_stop_counter(task->l1i_counter_fd, &l1i_counter);
+        perf_stop_counter(task->l1i_miss_counter_fd, &l1i_miss_counter);
+        perf_stop_counter(task->l1d_counter_fd, &l1d_counter);
+        perf_stop_counter(task->l1d_miss_counter_fd, &l1d_miss_counter);
+        perf_stop_counter(task->cache_misses_counter_fd, &cache_misses_counter);
+        perf_stop_counter(task->instructions_counter_fd, &instructions_counter);
+        perf_stop_counter(task->branch_misses_counter_fd, &branch_misses_counter);
+        perf_stop_counter(task->page_faults_counter_fd, &page_faults_counter);
+        perf_stop_counter(task->cpu_migrations_counter_fd, &cpu_migrations_counter);
+        perf_stop_counter(task->ctx_switches_counter_fd, &ctx_switches_counter);    
+
         //fprintf (stderr, "stop counter: %lld\n", counter);
-        traceEventThreadCounter(cap, t, task->counter_event_type+1, counter);
+        traceEventThreadCounter(cap, t, task->task_clock_counter_event_type+1, task_clock_counter);
+        traceEventThreadCounter(cap, t, task->l1i_counter_event_type+1, l1i_counter);
+        traceEventThreadCounter(cap, t, task->l1i_miss_counter_event_type+1, l1i_miss_counter);
+        traceEventThreadCounter(cap, t, task->l1d_counter_event_type+1, l1d_counter);
+        traceEventThreadCounter(cap, t, task->l1d_miss_counter_event_type+1, l1d_miss_counter);
+        traceEventThreadCounter(cap, t, task->cache_misses_counter_event_type+1, cache_misses_counter);
+        traceEventThreadCounter(cap, t, task->instructions_counter_event_type+1, instructions_counter);
+        traceEventThreadCounter(cap, t, task->branch_misses_counter_event_type+1, branch_misses_counter);
+        traceEventThreadCounter(cap, t, task->page_faults_counter_event_type+1, page_faults_counter);
+        traceEventThreadCounter(cap, t, task->cpu_migrations_counter_event_type+1, cpu_migrations_counter);
+        traceEventThreadCounter(cap, t, task->ctx_switches_counter_event_type+1, ctx_switches_counter);
+
         traceEventAllocated(cap, t, EVENT_POST_THREAD_ALLOCATED);
     }
 #endif

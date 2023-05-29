@@ -221,7 +221,7 @@ perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
 }
 
 // XXX Do this only when eventlog is enabled.
-static int perf_init_counter(int counter_type, int counter_cfg) {
+static int perf_init_counter(int counter_type, __u64 counter_cfg) {
      struct perf_event_attr pe;
      int fd;
 
@@ -244,8 +244,40 @@ static int perf_init_counter(int counter_type, int counter_cfg) {
 }
 
 static void perf_init_clock_counter (Task *task) {
-     task->counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_TASK_CLOCK);
-     task->counter_event_type = EVENT_PRE_THREAD_CLOCK;
+
+     task->task_clock_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_TASK_CLOCK);
+     task->task_clock_counter_event_type = EVENT_PRE_THREAD_CLOCK;
+
+     task->l1i_counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+     task->l1i_counter_event_type = EVENT_PRE_HW_CACHE_L1I;
+
+     task->l1i_miss_counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+     task->l1i_miss_counter_event_type = EVENT_PRE_HW_CACHE_L1I_MISS;
+
+     task->l1d_counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+     task->l1d_counter_event_type = EVENT_PRE_HW_CACHE_L1D;
+
+     task->l1d_miss_counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+     task->l1d_miss_counter_event_type = EVENT_PRE_HW_CACHE_L1D_MISS;
+
+     task->cache_misses_counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES);
+     task->cache_misses_counter_event_type = EVENT_PRE_HW_CACHE_MISSES;
+ 
+     task->instructions_counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS);
+     task->instructions_counter_event_type = EVENT_PRE_HW_INSTRUCTIONS;
+ 
+     task->branch_misses_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_HW_BRANCH_MISSES);
+     task->branch_misses_counter_event_type = EVENT_PRE_HW_BRANCH_MISSES;
+ 
+     task->page_faults_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_PAGE_FAULTS);
+     task->page_faults_counter_event_type = EVENT_PRE_THREAD_PAGE_FAULTS;
+ 
+     task->cpu_migrations_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CPU_MIGRATIONS);
+     task->cpu_migrations_counter_event_type = EVENT_PRE_THREAD_CPU_MIGRATIONS;
+     
+     task->ctx_switches_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES);
+     task->ctx_switches_counter_event_type = EVENT_PRE_THREAD_CTX_SWITCHES;
+
 }
 
 void perf_reset_counter(int fd) {
@@ -325,8 +357,39 @@ newTask (bool worker)
     task->spare_incalls = NULL;
     task->incall        = NULL;
     task->preferred_capability = -1;
-    task->counter_fd = -1;
-    task->counter_event_type = -1;
+
+    task->task_clock_counter_fd = -1;
+    task->task_clock_counter_event_type = -1;
+
+    task->l1i_counter_fd = -1;
+    task->l1i_counter_event_type = -1;
+
+    task->l1i_miss_counter_fd = -1;
+    task->l1i_miss_counter_event_type = -1;
+
+    task->l1d_counter_fd = -1;
+    task->l1d_counter_event_type = -1;
+
+    task->l1d_miss_counter_fd = -1;
+    task->l1d_miss_counter_event_type = -1;
+
+    task->cache_misses_counter_fd = -1;
+    task->cache_misses_counter_event_type = -1;
+
+    task->instructions_counter_fd = -1;
+    task->instructions_counter_event_type = -1;
+
+    task->branch_misses_counter_fd = -1;
+    task->branch_misses_counter_event_type = -1;
+
+    task->page_faults_counter_fd = -1;
+    task->page_faults_counter_event_type = -1;
+
+    task->cpu_migrations_counter_fd = -1;
+    task->cpu_migrations_counter_event_type = -1;
+
+    task->ctx_switches_counter_fd = -1;
+    task->ctx_switches_counter_event_type = -1;
 
 #if defined(THREADED_RTS)
     initCondition(&task->cond);
