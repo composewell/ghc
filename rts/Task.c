@@ -234,7 +234,7 @@ static int perf_init_counter(int counter_type, __u64 counter_cfg) {
      //pe.exclude_hv = 1;
 
      // Monitor the current process on all CPUs
-     fd = perf_event_open(&pe, 0, -1, -1, 0);
+     fd = perf_event_open(&pe, 0, -1, -1, PERF_FLAG_FD_CLOEXEC);
      if (fd == -1) {
         fprintf(stderr, "perf_event_open: error opening counter type %d config %llx\n",
             pe.type, pe.config);
