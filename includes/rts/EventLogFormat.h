@@ -209,13 +209,14 @@
 #define EVENT_POST_HW_BRANCH_MISSES      221
 #define EVENT_PRE_THREAD_CPU_MIGRATIONS  222
 #define EVENT_POST_THREAD_CPU_MIGRATIONS 223
+#define EVENT_PRE_PROCESS_CPU_TIME       224
 
 /*
  * The highest event code +1 that ghc itself emits. Note that some event
  * ranges higher than this are reserved but not currently emitted by ghc.
  * This must match the size of the EventDesc[] array in EventLog.c
  */
-#define NUM_GHC_EVENT_TAGS        224
+#define NUM_GHC_EVENT_TAGS        225
 
 #if 0  /* DEPRECATED EVENTS: */
 /* we don't actually need to record the thread, it's implicit */

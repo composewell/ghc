@@ -131,6 +131,7 @@ char *EventDesc[] = {
   [EVENT_POST_HW_BRANCH_MISSES] = "Run thread stop branch misses",
   [EVENT_PRE_THREAD_CPU_MIGRATIONS]  = "Run thread start cpu migrations",
   [EVENT_POST_THREAD_CPU_MIGRATIONS] = "Run thread stop cpu migrations",
+  [EVENT_PRE_PROCESS_CPU_TIME] = "Process cpu time",
 };
 
 // Event type.
@@ -334,6 +335,7 @@ postHeaderEvents(void)
         case EVENT_POST_HW_BRANCH_MISSES:
         case EVENT_PRE_THREAD_CPU_MIGRATIONS:
         case EVENT_POST_THREAD_CPU_MIGRATIONS:
+        case EVENT_PRE_PROCESS_CPU_TIME:
             eventTypes[t].size = sizeof(EventThreadID);
             break;
 
@@ -1132,6 +1134,8 @@ static void postCounterEvent(StgWord32 tid, EventsBuf *eb, StgWord64 counter,
     postBuf(eb, (StgWord8*) msg, (size - 6));
 }
 
+#define TEN_POWER9 1000000000
+
 void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
 {
     const size_t size = strlen(msg);
@@ -1140,6 +1144,7 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     StgWord64 counter;
     struct counter_desc *ctrs = cap->running_task->task_counters;
     int i;
+    struct timespec ts;
 
     perf_stop_all_counters(ctrs);
 
@@ -1165,6 +1170,10 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     postCounterEvent (tid, eb, counter * sizeof (W_),
           EVENT_PRE_THREAD_ALLOCATED, type, required, msg);
 
+    clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &ts);
+    counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;
+    postCounterEvent (tid, eb, counter,
+          EVENT_PRE_PROCESS_CPU_TIME, type, required, msg);
     perf_start_all_counters(ctrs);
 }
 
