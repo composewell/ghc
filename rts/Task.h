@@ -110,6 +110,13 @@ typedef struct InCall_ {
     struct InCall_ *next;
 } InCall;
 
+#define MAX_TASK_COUNTERS 16
+
+struct counter_desc {
+  int counter_fd;
+  int counter_event_type;
+};
+
 typedef struct Task_ {
 #if defined(THREADED_RTS)
     OSThreadId id;              // The OS Thread ID of this task
@@ -158,29 +165,7 @@ typedef struct Task_ {
     // if >= 0, this Capability will be used for in-calls
     int preferred_capability;
 
-    int task_clock_counter_fd;
-    int l1i_counter_fd;
-    int l1i_miss_counter_fd;
-    int l1d_counter_fd;
-    int l1d_miss_counter_fd;
-    int cache_misses_counter_fd;
-    int instructions_counter_fd;
-    int branch_misses_counter_fd;
-    int page_faults_counter_fd;
-    int cpu_migrations_counter_fd;
-    int ctx_switches_counter_fd;
-
-    int task_clock_counter_event_type;
-    int l1i_counter_event_type;
-    int l1i_miss_counter_event_type;
-    int l1d_counter_event_type;
-    int l1d_miss_counter_event_type;
-    int cache_misses_counter_event_type;
-    int instructions_counter_event_type;
-    int branch_misses_counter_event_type;
-    int page_faults_counter_event_type;
-    int cpu_migrations_counter_event_type;
-    int ctx_switches_counter_event_type;
+    struct counter_desc task_counters [16];
 
     // Links tasks on the returning_tasks queue of a Capability, and
     // on spare_workers.
@@ -373,4 +358,6 @@ void perf_reset_counter(int fd);
 void perf_read_counter(int fd, StgWord64* count);
 void perf_start_counter(int fd, StgWord64* count);
 void perf_stop_counter(int fd, StgWord64* count);
+void perf_start_all_counters(struct counter_desc *ctrs);
+void perf_stop_all_counters(struct counter_desc *ctrs);
 #include "EndPrivate.h"

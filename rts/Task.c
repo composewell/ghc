@@ -236,47 +236,56 @@ static int perf_init_counter(int counter_type, __u64 counter_cfg) {
      // Monitor the current process on all CPUs
      fd = perf_event_open(&pe, 0, -1, -1, 0);
      if (fd == -1) {
-        fprintf(stderr, "perf_event_open; error opening counter %llx\n", pe.config);
+        fprintf(stderr, "perf_event_open: error opening counter type %d config %llx\n",
+            pe.type, pe.config);
         return (-1);
      }
 
      return fd;
 }
 
-static void perf_init_clock_counter (Task *task) {
+static void perf_init_counters (Task *task) {
 
-     task->task_clock_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_TASK_CLOCK);
-     task->task_clock_counter_event_type = EVENT_PRE_THREAD_CLOCK;
+    // Keep those counters first that you want least affected by
+    // enabling disabling other counters.
+    task->task_counters[0].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_TASK_CLOCK);
+    task->task_counters[0].counter_event_type = EVENT_PRE_THREAD_CLOCK;
 
-     task->l1i_counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
-     task->l1i_counter_event_type = EVENT_PRE_HW_CACHE_L1I;
+    task->task_counters[1].counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS);
+    task->task_counters[1].counter_event_type = EVENT_PRE_HW_INSTRUCTIONS;
 
-     task->l1i_miss_counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
-     task->l1i_miss_counter_event_type = EVENT_PRE_HW_CACHE_L1I_MISS;
+    /*
+    task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+    task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1I;
 
-     task->l1d_counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
-     task->l1d_counter_event_type = EVENT_PRE_HW_CACHE_L1D;
+    task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+    task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1I_MISS;
 
-     task->l1d_miss_counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
-     task->l1d_miss_counter_event_type = EVENT_PRE_HW_CACHE_L1D_MISS;
+    task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+    task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1D;
 
-     task->cache_misses_counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES);
-     task->cache_misses_counter_event_type = EVENT_PRE_HW_CACHE_MISSES;
- 
-     task->instructions_counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS);
-     task->instructions_counter_event_type = EVENT_PRE_HW_INSTRUCTIONS;
- 
-     task->branch_misses_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_HW_BRANCH_MISSES);
-     task->branch_misses_counter_event_type = EVENT_PRE_HW_BRANCH_MISSES;
- 
-     task->page_faults_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_PAGE_FAULTS);
-     task->page_faults_counter_event_type = EVENT_PRE_THREAD_PAGE_FAULTS;
- 
-     task->cpu_migrations_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CPU_MIGRATIONS);
-     task->cpu_migrations_counter_event_type = EVENT_PRE_THREAD_CPU_MIGRATIONS;
-     
-     task->ctx_switches_counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES);
-     task->ctx_switches_counter_event_type = EVENT_PRE_THREAD_CTX_SWITCHES;
+    task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+    task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1D_MISS;
+    */
+
+    // Add cache references as well
+    task->task_counters[2].counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES);
+    task->task_counters[2].counter_event_type = EVENT_PRE_HW_CACHE_MISSES;
+
+    task->task_counters[3].counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_BRANCH_MISSES);
+    task->task_counters[3].counter_event_type = EVENT_PRE_HW_BRANCH_MISSES;
+
+    // Need minor/major
+    task->task_counters[4].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_PAGE_FAULTS);
+    task->task_counters[4].counter_event_type = EVENT_PRE_THREAD_PAGE_FAULTS;
+
+    /*
+    task->task_counters[9].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CPU_MIGRATIONS);
+    task->task_counters[9].counter_event_type = EVENT_PRE_THREAD_CPU_MIGRATIONS;
+    */
+
+    task->task_counters[5].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES);
+    task->task_counters[5].counter_event_type = EVENT_PRE_THREAD_CTX_SWITCHES;
 
 }
 
@@ -333,6 +342,33 @@ void perf_stop_counter(int fd, StgWord64* count) {
      }
 }
 
+// NOTE: depending on the order of counters the ioctl cost may be accounted in
+// the counters that were started earlier.
+void perf_start_all_counters(struct counter_desc *ctrs) {
+    int i;
+    // Start the last one first
+    for (i = MAX_TASK_COUNTERS - 1; i >= 0; i--) {
+      if (ctrs[i].counter_fd != -1)
+      {
+        // XXX Check return value
+        ioctl(ctrs[i].counter_fd, PERF_EVENT_IOC_ENABLE, 0);
+      }
+    }
+}
+
+// NOTE: depending on the order of counters the ioctl cost may be accounted in
+// the counters that were stopped later.
+void perf_stop_all_counters(struct counter_desc *ctrs) {
+    int i;
+    for (i = 0; i < MAX_TASK_COUNTERS; i++) {
+      if (ctrs[i].counter_fd != -1)
+      {
+        // XXX Check return value
+        ioctl(ctrs[i].counter_fd, PERF_EVENT_IOC_DISABLE, 0);
+      }
+    }
+}
+
 /*
 static void perf_close_counter(int fd) {
    close(fd);
@@ -345,6 +381,7 @@ static Task*
 newTask (bool worker)
 {
     Task *task;
+    int i;
 
 #define ROUND_TO_CACHE_LINE(x) ((((x)+63) / 64) * 64)
     task = stgMallocBytes(ROUND_TO_CACHE_LINE(sizeof(Task)), "newTask");
@@ -358,38 +395,10 @@ newTask (bool worker)
     task->incall        = NULL;
     task->preferred_capability = -1;
 
-    task->task_clock_counter_fd = -1;
-    task->task_clock_counter_event_type = -1;
-
-    task->l1i_counter_fd = -1;
-    task->l1i_counter_event_type = -1;
-
-    task->l1i_miss_counter_fd = -1;
-    task->l1i_miss_counter_event_type = -1;
-
-    task->l1d_counter_fd = -1;
-    task->l1d_counter_event_type = -1;
-
-    task->l1d_miss_counter_fd = -1;
-    task->l1d_miss_counter_event_type = -1;
-
-    task->cache_misses_counter_fd = -1;
-    task->cache_misses_counter_event_type = -1;
-
-    task->instructions_counter_fd = -1;
-    task->instructions_counter_event_type = -1;
-
-    task->branch_misses_counter_fd = -1;
-    task->branch_misses_counter_event_type = -1;
-
-    task->page_faults_counter_fd = -1;
-    task->page_faults_counter_event_type = -1;
-
-    task->cpu_migrations_counter_fd = -1;
-    task->cpu_migrations_counter_event_type = -1;
-
-    task->ctx_switches_counter_fd = -1;
-    task->ctx_switches_counter_event_type = -1;
+    for (i = 0; i < MAX_TASK_COUNTERS; i++) {
+      task->task_counters[i].counter_fd = -1;
+      task->task_counters[i].counter_event_type = -1;
+    }
 
 #if defined(THREADED_RTS)
     initCondition(&task->cond);
@@ -485,7 +494,7 @@ newBoundTask (void)
     task->stopped = false;
 
 #ifdef LINUX_PERF_EVENTS
-    perf_init_clock_counter(task);
+    perf_init_counters(task);
 #endif
 
     newInCall(task);
@@ -613,7 +622,7 @@ workerStart(Task *task)
     }
 
 #ifdef LINUX_PERF_EVENTS
-    perf_init_clock_counter(task);
+    perf_init_counters(task);
 #endif
 
     // set the thread-local pointer to the Task:
