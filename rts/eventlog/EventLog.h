@@ -48,6 +48,7 @@ void postEventAtTimestamp (Capability *cap, EventTimestamp ts,
 void postMsg(char *msg, va_list ap);
 
 void postUserEvent(Capability *cap, EventTypeNum type, char *msg);
+void postForeignEvent(Capability *cap, EventTypeNum type, char *msg);
 
 void postUserBinaryEvent(Capability *cap, EventTypeNum type,
                          uint8_t *msg, size_t size);

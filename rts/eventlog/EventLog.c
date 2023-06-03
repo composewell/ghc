@@ -132,6 +132,7 @@ char *EventDesc[] = {
   [EVENT_PRE_THREAD_CPU_MIGRATIONS]  = "Run thread start cpu migrations",
   [EVENT_POST_THREAD_CPU_MIGRATIONS] = "Run thread stop cpu migrations",
   [EVENT_PRE_PROCESS_CPU_TIME] = "Process cpu time",
+  [EVENT_PRE_FOREIGN_CPU_TIME] = "CPU time for foreign calls",
 };
 
 // Event type.
@@ -336,6 +337,7 @@ postHeaderEvents(void)
         case EVENT_PRE_THREAD_CPU_MIGRATIONS:
         case EVENT_POST_THREAD_CPU_MIGRATIONS:
         case EVENT_PRE_PROCESS_CPU_TIME:
+        case EVENT_PRE_FOREIGN_CPU_TIME:
             eventTypes[t].size = sizeof(EventThreadID);
             break;
 
@@ -1175,6 +1177,26 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     postCounterEvent (tid, eb, counter,
           EVENT_PRE_PROCESS_CPU_TIME, type, required, msg);
     perf_start_all_counters(ctrs);
+}
+
+void postForeignEvent(Capability *cap, EventTypeNum type, char *msg)
+{
+    const size_t size = strlen(msg);
+    size_t required = size + 6;
+    StgWord32 tid = cap->r.rCurrentTSO->id;
+    StgWord64 counter;
+    struct timespec ts;
+
+    if (size > EVENT_PAYLOAD_SIZE_MAX) {
+        errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
+        return;
+    }
+
+    EventsBuf *eb = &capEventBuf[cap->no];
+    clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &ts);
+    counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;
+    postCounterEvent (tid, eb, counter,
+          EVENT_PRE_FOREIGN_CPU_TIME, type, required, msg);
 }
 
 void postUserBinaryEvent(Capability   *cap,

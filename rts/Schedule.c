@@ -554,6 +554,7 @@ run_thread:
 
         traceEventCounterStart (cap, task, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
+        t = cap->r.rCurrentTSO;
         traceEventCounterStop (cap, task, t);
         cap = regTableToCapability(r);
         ret = r->rRet;
@@ -2493,18 +2494,13 @@ suspendThread (StgRegTable *reg, bool interruptible)
   task = cap->running_task;
   tso = cap->r.rCurrentTSO;
 
-  // We are continuing to process the foreign call in this OS thread, therefore
-  // we need to account that as part of this thread.
-
-  // What if the ccall blocks? Then we would be accounting the blocked
-  // time as well in the thread which is wrong.
-
-  // This could be problematic though if the thread can be scheduled
-  // from elsewhere, can it? That would be frought with other problems
-  // though because once the foreign call completes we are going to
-  // return to executing the thread from where we left.
-
   //traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
+  traceEventCounterStop (cap, task, tso);
+  // XXX We can push it down before returning but we need to ensure that we
+  // are passing correct task and tso.
+#if defined(TRACING)
+  postForeignEvent(cap, EVENT_USER_MSG, "START:foreign");
+#endif
 
   // XXX this might not be necessary --SDM
   tso->what_next = ThreadRunGHC;
@@ -2598,6 +2594,10 @@ resumeThread (void *task_)
     dirty_STACK(cap,tso->stackobj);
 
     IF_DEBUG(sanity, checkTSO(tso));
+#if defined(TRACING)
+    postForeignEvent(cap, EVENT_USER_MSG, "END:foreign");
+#endif
+    traceEventCounterStart (cap, task, tso);
 
     return &cap->r;
 }
