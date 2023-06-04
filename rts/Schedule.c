@@ -224,7 +224,7 @@ static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
          * discrepancies.
          */
 
-        for (i = 0; i < MAX_TASK_COUNTERS; i++) {
+        for (i = 0; i < task->task_n_counters; i++) {
           if (ctrs[i].counter_fd != -1) {
             counter = 0;
             perf_read_counter (ctrs[i].counter_fd, &counter);
@@ -238,7 +238,7 @@ static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
           }
         }
 
-        perf_start_all_counters(ctrs);
+        perf_start_all_counters(task);
     }
 #endif
 }
@@ -254,8 +254,8 @@ static void traceEventCounterStop (Capability *cap, Task* task, StgTSO *t)
     if (eventlog_enabled)
     {
         int i;
-        perf_stop_all_counters(ctrs);
-        for (i = 0; i < MAX_TASK_COUNTERS; i++) {
+        perf_stop_all_counters(task);
+        for (i = 0; i < task->task_n_counters; i++) {
           if (ctrs[i].counter_fd != -1) {
             counter = 0;
             perf_read_counter (ctrs[i].counter_fd, &counter);

@@ -1138,6 +1138,10 @@ static void postCounterEvent(StgWord32 tid, EventsBuf *eb, StgWord64 counter,
 
 #define TEN_POWER9 1000000000
 
+// XXX To avoid the overhead of too many event logs we can maintain the
+// thread's windows in the TSO, batch the events and log them in batches, with
+// a count and total. Other stats like min/max can also be maintained if
+// required.
 void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
 {
     const size_t size = strlen(msg);
@@ -1148,7 +1152,7 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     int i;
     struct timespec ts;
 
-    perf_stop_all_counters(ctrs);
+    perf_stop_all_counters(cap->running_task);
 
     if (size > EVENT_PAYLOAD_SIZE_MAX) {
         errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
@@ -1157,7 +1161,7 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     EventsBuf *eb = &capEventBuf[cap->no];
 
     //postEventHeader(eb, type);
-    for (i = 0; i < MAX_TASK_COUNTERS; i++) {
+    for (i = 0; i < cap->running_task->task_n_counters; i++) {
       if (ctrs[i].counter_fd != -1) {
         counter = 0;
         perf_read_counter (ctrs[i].counter_fd, &counter);
@@ -1176,7 +1180,7 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;
     postCounterEvent (tid, eb, counter,
           EVENT_PRE_PROCESS_CPU_TIME, type, required, msg);
-    perf_start_all_counters(ctrs);
+    perf_start_all_counters(cap->running_task);
 }
 
 void postForeignEvent(Capability *cap, EventTypeNum type, char *msg)

@@ -166,6 +166,7 @@ typedef struct Task_ {
     int preferred_capability;
 
     struct counter_desc task_counters [16];
+    int task_n_counters;
 
     // Links tasks on the returning_tasks queue of a Capability, and
     // on spare_workers.
@@ -358,6 +359,6 @@ void perf_reset_counter(int fd);
 void perf_read_counter(int fd, StgWord64* count);
 void perf_start_counter(int fd, StgWord64* count);
 void perf_stop_counter(int fd, StgWord64* count);
-void perf_start_all_counters(struct counter_desc *ctrs);
-void perf_stop_all_counters(struct counter_desc *ctrs);
+void perf_start_all_counters(Task *task);
+void perf_stop_all_counters(Task *task);
 #include "EndPrivate.h"

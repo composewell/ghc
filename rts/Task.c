@@ -244,15 +244,21 @@ static int perf_init_counter(int counter_type, __u64 counter_cfg) {
      return fd;
 }
 
+// XXX Get the list of enabled counters from the RTS options. Enable only those
+// counters. Assign them index 0 to n. keep the count n in the task struct. And
+// iterate only up to n when processing the counters.
 static void perf_init_counters (Task *task) {
 
     // Keep those counters first that you want least affected by
     // enabling disabling other counters.
     task->task_counters[0].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_TASK_CLOCK);
     task->task_counters[0].counter_event_type = EVENT_PRE_THREAD_CLOCK;
+    task->task_n_counters = 1;
 
+    /*
     task->task_counters[1].counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS);
     task->task_counters[1].counter_event_type = EVENT_PRE_HW_INSTRUCTIONS;
+    */
 
     /*
     task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
@@ -268,6 +274,7 @@ static void perf_init_counters (Task *task) {
     task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1D_MISS;
     */
 
+    /*
     // Add cache references as well
     task->task_counters[2].counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES);
     task->task_counters[2].counter_event_type = EVENT_PRE_HW_CACHE_MISSES;
@@ -278,15 +285,17 @@ static void perf_init_counters (Task *task) {
     // Need minor/major
     task->task_counters[4].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_PAGE_FAULTS);
     task->task_counters[4].counter_event_type = EVENT_PRE_THREAD_PAGE_FAULTS;
+    */
 
     /*
     task->task_counters[9].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CPU_MIGRATIONS);
     task->task_counters[9].counter_event_type = EVENT_PRE_THREAD_CPU_MIGRATIONS;
     */
 
+    /*
     task->task_counters[5].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES);
     task->task_counters[5].counter_event_type = EVENT_PRE_THREAD_CTX_SWITCHES;
-
+    */
 }
 
 void perf_reset_counter(int fd) {
@@ -344,10 +353,12 @@ void perf_stop_counter(int fd, StgWord64* count) {
 
 // NOTE: depending on the order of counters the ioctl cost may be accounted in
 // the counters that were started earlier.
-void perf_start_all_counters(struct counter_desc *ctrs) {
+void perf_start_all_counters(Task *task) {
+    struct counter_desc *ctrs = task->task_counters;
     int i;
+
     // Start the last one first
-    for (i = MAX_TASK_COUNTERS - 1; i >= 0; i--) {
+    for (i = task->task_n_counters - 1; i >= 0; i--) {
       if (ctrs[i].counter_fd != -1)
       {
         // XXX Check return value
@@ -358,9 +369,11 @@ void perf_start_all_counters(struct counter_desc *ctrs) {
 
 // NOTE: depending on the order of counters the ioctl cost may be accounted in
 // the counters that were stopped later.
-void perf_stop_all_counters(struct counter_desc *ctrs) {
+void perf_stop_all_counters(Task *task) {
+    struct counter_desc *ctrs = task->task_counters;
     int i;
-    for (i = 0; i < MAX_TASK_COUNTERS; i++) {
+
+    for (i = 0; i < task->task_n_counters; i++) {
       if (ctrs[i].counter_fd != -1)
       {
         // XXX Check return value
@@ -394,7 +407,9 @@ newTask (bool worker)
     task->spare_incalls = NULL;
     task->incall        = NULL;
     task->preferred_capability = -1;
+    task->task_n_counters = 0;
 
+    // Initialize the array for safety, this is ideally not needed
     for (i = 0; i < MAX_TASK_COUNTERS; i++) {
       task->task_counters[i].counter_fd = -1;
       task->task_counters[i].counter_event_type = -1;
