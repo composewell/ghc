@@ -114,4 +114,6 @@ typedef struct RTSSummaryStats_ {
     GenerationSummaryStats* gc_summary_stats;
 } RTSSummaryStats;
 
+StgWord64 getGCCPUStats(void);
+
 #include "EndPrivate.h"

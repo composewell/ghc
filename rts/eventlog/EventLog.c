@@ -27,6 +27,9 @@
 #include <unistd.h>
 #endif
 
+# include <sys/resource.h>
+# include <sys/times.h>
+
 static const EventLogWriter *event_log_writer;
 
 #define EVENT_LOG_SIZE 2 * (1024 * 1024) // 2MB
@@ -133,6 +136,9 @@ char *EventDesc[] = {
   [EVENT_POST_THREAD_CPU_MIGRATIONS] = "Run thread stop cpu migrations",
   [EVENT_PRE_PROCESS_CPU_TIME] = "Process cpu time",
   [EVENT_PRE_FOREIGN_CPU_TIME] = "CPU time for foreign calls",
+  [EVENT_PRE_GC_CPU_TIME] = "CPU time for GC",
+  [EVENT_PRE_USER_CPU_TIME] = "CPU time for user",
+  [EVENT_PRE_SYSTEM_CPU_TIME] = "CPU time for kernel",
 };
 
 // Event type.
@@ -338,6 +344,9 @@ postHeaderEvents(void)
         case EVENT_POST_THREAD_CPU_MIGRATIONS:
         case EVENT_PRE_PROCESS_CPU_TIME:
         case EVENT_PRE_FOREIGN_CPU_TIME:
+        case EVENT_PRE_GC_CPU_TIME:
+        case EVENT_PRE_USER_CPU_TIME:
+        case EVENT_PRE_SYSTEM_CPU_TIME:
             eventTypes[t].size = sizeof(EventThreadID);
             break;
 
@@ -1151,6 +1160,7 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     struct counter_desc *ctrs = cap->running_task->task_counters;
     int i;
     struct timespec ts;
+    struct rusage ru;
 
     perf_stop_all_counters(cap->running_task);
 
@@ -1175,6 +1185,20 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     // end message.
     postCounterEvent (tid, eb, counter * sizeof (W_),
           EVENT_PRE_THREAD_ALLOCATED, type, required, msg);
+
+    postCounterEvent(tid, eb, getGCCPUStats(),
+          EVENT_PRE_GC_CPU_TIME, type, required, msg);
+
+    // All the event log messages can be combined in one?
+    // rusage is the only way to get user/system CPU time, but the granularity
+    // is microseconds. Another way could be to read /proc/pid/stat.
+    getrusage(RUSAGE_SELF, &ru);
+    counter = ru.ru_utime.tv_sec * TEN_POWER9 + ru.ru_utime.tv_usec * 1000;
+    postCounterEvent(tid, eb, counter,
+          EVENT_PRE_USER_CPU_TIME, type, required, msg);
+    counter = ru.ru_stime.tv_sec * TEN_POWER9 + ru.ru_stime.tv_usec * 1000;
+    postCounterEvent(tid, eb, counter,
+          EVENT_PRE_SYSTEM_CPU_TIME, type, required, msg);
 
     clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &ts);
     counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;

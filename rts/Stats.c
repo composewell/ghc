@@ -1517,6 +1517,11 @@ void getRTSStats( RTSStats *s )
         stats.gc_elapsed_ns;
 }
 
+StgWord64 getGCCPUStats(void)
+{
+    return stats.gc_cpu_ns;
+}
+
 /* -----------------------------------------------------------------------------
    Dumping stuff in the stats file, or via the debug message interface
    -------------------------------------------------------------------------- */
