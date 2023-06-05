@@ -308,6 +308,8 @@ void perf_reset_counter(int fd) {
      }
 }
 
+// XXX Use rdpmc instead of using the read syscall where possible
+// Also see: https://web.eece.maine.edu/~vweaver/projects/papi-rdpmc/espt2017_weaver_slides.pdf
 void perf_read_counter(int fd, StgWord64* count) {
      int ret;
 
