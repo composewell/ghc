@@ -316,8 +316,12 @@ void perf_read_counter(int fd, StgWord64* count) {
      if (fd != -1)
      {
        ret = read(fd, count, sizeof(StgWord64));
-       if (ret == -1) {
-          fprintf(stderr, "perf_read_counter: Error reading perf event count \n");
+       if (ret != sizeof(StgWord64)) {
+         if (ret == -1) {
+            fprintf(stderr, "perf_read_counter: Error reading perf event count, fd %d\n", fd);
+         } else {
+            fprintf(stderr, "perf_read_counter: truncated read, fd %d\n", fd);
+         }
        }
      } else {
           fprintf(stderr, "perf_read_counter: fd not set \n");

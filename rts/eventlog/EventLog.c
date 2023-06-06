@@ -20,6 +20,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 #if defined(HAVE_SYS_TYPES_H)
 #include <sys/types.h>
 #endif
@@ -1176,8 +1177,21 @@ static void postUserEventInternal(int isHaskell,
     //postEventHeader(eb, type);
     for (i = 0; i < task->task_n_counters; i++) {
       if (ctrs[i].counter_fd != -1) {
-        counter = 0;
+        counter = UINT64_MAX;
         perf_read_counter (ctrs[i].counter_fd, &counter);
+        // Strangely, this happens when we press CTRL-C. The read call
+        // is successful and returns 8 bytes read. There is no way to
+        // detect this condition from the case if the counter is really
+        // 0.
+        if (counter == 0) {
+          fprintf (stderr, "counter %d returned zero\n", i);
+          // Temporarily exit so that we know when this happens.
+          exit (1);
+        } else if (counter == UINT64_MAX) {
+          errorBelch("could not read counter %d", i);
+          // Temporarily exit so that we know when this happens.
+          exit (1);
+        }
         postCounterEvent (tid, eb, counter, ctrs[i].counter_event_type,
               type, required, msg);
       }
@@ -1192,23 +1206,23 @@ static void postUserEventInternal(int isHaskell,
 
         postCounterEvent(tid, eb, getGCCPUStats(),
               EVENT_PRE_GC_CPU_TIME, type, required, msg);
+
+        // All the event log messages can be combined in one?
+        // rusage is the only way to get user/system CPU time, but the granularity
+        // is microseconds. Another way could be to read /proc/pid/stat.
+        getrusage(RUSAGE_SELF, &ru);
+        counter = ru.ru_utime.tv_sec * TEN_POWER9 + ru.ru_utime.tv_usec * 1000;
+        postCounterEvent(tid, eb, counter,
+              EVENT_PRE_USER_CPU_TIME, type, required, msg);
+        counter = ru.ru_stime.tv_sec * TEN_POWER9 + ru.ru_stime.tv_usec * 1000;
+        postCounterEvent(tid, eb, counter,
+              EVENT_PRE_SYSTEM_CPU_TIME, type, required, msg);
+
+        clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &ts);
+        counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;
+        postCounterEvent (tid, eb, counter,
+              EVENT_PRE_PROCESS_CPU_TIME, type, required, msg);
     }
-
-    // All the event log messages can be combined in one?
-    // rusage is the only way to get user/system CPU time, but the granularity
-    // is microseconds. Another way could be to read /proc/pid/stat.
-    getrusage(RUSAGE_SELF, &ru);
-    counter = ru.ru_utime.tv_sec * TEN_POWER9 + ru.ru_utime.tv_usec * 1000;
-    postCounterEvent(tid, eb, counter,
-          EVENT_PRE_USER_CPU_TIME, type, required, msg);
-    counter = ru.ru_stime.tv_sec * TEN_POWER9 + ru.ru_stime.tv_usec * 1000;
-    postCounterEvent(tid, eb, counter,
-          EVENT_PRE_SYSTEM_CPU_TIME, type, required, msg);
-
-    clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &ts);
-    counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;
-    postCounterEvent (tid, eb, counter,
-          EVENT_PRE_PROCESS_CPU_TIME, type, required, msg);
     perf_start_all_counters(task);
 }
 
