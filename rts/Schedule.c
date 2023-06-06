@@ -2496,6 +2496,18 @@ suspendThread (StgRegTable *reg, bool interruptible)
 
   //traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
   traceEventCounterStop (cap, task, tso);
+  // This is a separate call because we release the capability and the task is
+  // used for the foreign call. At the end of the call the thread is resumed
+  // again. The OS thread might block. Since we do not have the cap, the
+  // allocated counter cannot be used here, its counts will be wrong, may even
+  // go negative because of changing the cap.
+  //
+  // Note that a safe foreign call may re-enter Haskell. Which thread does it
+  // use, a new thread?
+  //
+  // We account the foreign calls in a separate window of the thread. This
+  // window is not accounted in the overall thread accounting.
+  //
   // XXX We can push it down before returning but we need to ensure that we
   // are passing correct task and tso.
 #if defined(TRACING)
@@ -2595,6 +2607,8 @@ resumeThread (void *task_)
 
     IF_DEBUG(sanity, checkTSO(tso));
 #if defined(TRACING)
+    // Note that this has to be before the traceEventCounterStart call so that
+    // the window ends before the thread starts.
     postForeignEvent(cap, EVENT_USER_MSG, "END:foreign");
 #endif
     traceEventCounterStart (cap, task, tso);

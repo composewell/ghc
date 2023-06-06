@@ -1151,7 +1151,8 @@ static void postCounterEvent(StgWord32 tid, EventsBuf *eb, StgWord64 counter,
 // thread's windows in the TSO, batch the events and log them in batches, with
 // a count and total. Other stats like min/max can also be maintained if
 // required.
-void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
+static void postUserEventInternal(int isHaskell,
+    Capability *cap, EventTypeNum type, char *msg)
 {
     const size_t size = strlen(msg);
     size_t required = size + 6;
@@ -1180,14 +1181,16 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
       }
     }
 
-    counter = getCurrentAllocated (cap);
-    // We translate the PRE to POST in the event processor if this is window
-    // end message.
-    postCounterEvent (tid, eb, counter * sizeof (W_),
-          EVENT_PRE_THREAD_ALLOCATED, type, required, msg);
+    if (isHaskell) {
+        counter = getCurrentAllocated (cap);
+        // We translate the PRE to POST in the event processor if this is window
+        // end message.
+        postCounterEvent (tid, eb, counter * sizeof (W_),
+              EVENT_PRE_THREAD_ALLOCATED, type, required, msg);
 
-    postCounterEvent(tid, eb, getGCCPUStats(),
-          EVENT_PRE_GC_CPU_TIME, type, required, msg);
+        postCounterEvent(tid, eb, getGCCPUStats(),
+              EVENT_PRE_GC_CPU_TIME, type, required, msg);
+    }
 
     // All the event log messages can be combined in one?
     // rusage is the only way to get user/system CPU time, but the granularity
@@ -1207,24 +1210,14 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
     perf_start_all_counters(cap->running_task);
 }
 
+void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
+{
+    postUserEventInternal (1, cap, type, msg);
+}
+
 void postForeignEvent(Capability *cap, EventTypeNum type, char *msg)
 {
-    const size_t size = strlen(msg);
-    size_t required = size + 6;
-    StgWord32 tid = cap->r.rCurrentTSO->id;
-    StgWord64 counter;
-    struct timespec ts;
-
-    if (size > EVENT_PAYLOAD_SIZE_MAX) {
-        errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
-        return;
-    }
-
-    EventsBuf *eb = &capEventBuf[cap->no];
-    clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &ts);
-    counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;
-    postCounterEvent (tid, eb, counter,
-          EVENT_PRE_FOREIGN_CPU_TIME, type, required, msg);
+    postUserEventInternal (0, cap, type, msg);
 }
 
 void postUserBinaryEvent(Capability   *cap,
