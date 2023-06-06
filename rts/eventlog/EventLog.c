@@ -1152,18 +1152,20 @@ static void postCounterEvent(StgWord32 tid, EventsBuf *eb, StgWord64 counter,
 // a count and total. Other stats like min/max can also be maintained if
 // required.
 static void postUserEventInternal(int isHaskell,
-    Capability *cap, EventTypeNum type, char *msg)
+    Capability *cap, Task *task, EventTypeNum type, char *msg)
 {
+    // Note: do not use the cap->running_task, it is not correct in foreign
+    // call case..
     const size_t size = strlen(msg);
     size_t required = size + 6;
     StgWord32 tid = cap->r.rCurrentTSO->id;
     StgWord64 counter;
-    struct counter_desc *ctrs = cap->running_task->task_counters;
+    struct counter_desc *ctrs = task->task_counters;
     int i;
     struct timespec ts;
     struct rusage ru;
 
-    perf_stop_all_counters(cap->running_task);
+    perf_stop_all_counters(task);
 
     if (size > EVENT_PAYLOAD_SIZE_MAX) {
         errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
@@ -1172,7 +1174,7 @@ static void postUserEventInternal(int isHaskell,
     EventsBuf *eb = &capEventBuf[cap->no];
 
     //postEventHeader(eb, type);
-    for (i = 0; i < cap->running_task->task_n_counters; i++) {
+    for (i = 0; i < task->task_n_counters; i++) {
       if (ctrs[i].counter_fd != -1) {
         counter = 0;
         perf_read_counter (ctrs[i].counter_fd, &counter);
@@ -1207,17 +1209,17 @@ static void postUserEventInternal(int isHaskell,
     counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;
     postCounterEvent (tid, eb, counter,
           EVENT_PRE_PROCESS_CPU_TIME, type, required, msg);
-    perf_start_all_counters(cap->running_task);
+    perf_start_all_counters(task);
 }
 
 void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
 {
-    postUserEventInternal (1, cap, type, msg);
+    postUserEventInternal (1, cap, cap->running_task, type, msg);
 }
 
-void postForeignEvent(Capability *cap, EventTypeNum type, char *msg)
+void postForeignEvent(Capability *cap, Task *task, EventTypeNum type, char *msg)
 {
-    postUserEventInternal (0, cap, type, msg);
+    postUserEventInternal (0, cap, task, type, msg);
 }
 
 void postUserBinaryEvent(Capability   *cap,

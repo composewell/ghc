@@ -2511,7 +2511,7 @@ suspendThread (StgRegTable *reg, bool interruptible)
   // XXX We can push it down before returning but we need to ensure that we
   // are passing correct task and tso.
 #if defined(TRACING)
-  postForeignEvent(cap, EVENT_USER_MSG, "START:foreign");
+  postForeignEvent(cap, task, EVENT_USER_MSG, "START:foreign");
 #endif
 
   // XXX this might not be necessary --SDM
@@ -2609,7 +2609,8 @@ resumeThread (void *task_)
 #if defined(TRACING)
     // Note that this has to be before the traceEventCounterStart call so that
     // the window ends before the thread starts.
-    postForeignEvent(cap, EVENT_USER_MSG, "END:foreign");
+    // Need to use the old task as cap->running_task is not yet set
+    postForeignEvent(cap, task, EVENT_USER_MSG, "END:foreign");
 #endif
     traceEventCounterStart (cap, task, tso);
 
