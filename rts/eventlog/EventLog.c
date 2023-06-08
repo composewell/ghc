@@ -1182,18 +1182,23 @@ static void postUserEventInternal(int isHaskell,
         // Strangely, this happens when we press CTRL-C. The read call
         // is successful and returns 8 bytes read. There is no way to
         // detect this condition from the case if the counter is really
-        // 0.
+        // 0. It seems the counter gets reset to 0. Further calls to the
+        // counter provide increasing values.
         if (counter == 0) {
           fprintf (stderr, "counter %d returned zero\n", i);
           // Temporarily exit so that we know when this happens.
-          exit (1);
+          // exit (1);
         } else if (counter == UINT64_MAX) {
           errorBelch("could not read counter %d", i);
           // Temporarily exit so that we know when this happens.
           exit (1);
+        } else {
+          // XXX If we do not post the counter it leads to a missing event
+          // confusing the event analyzer. We can put UINT64_MAX in the counter
+          // and handle accordingly in the analyzer.
+          postCounterEvent (tid, eb, counter, ctrs[i].counter_event_type,
+                type, required, msg);
         }
-        postCounterEvent (tid, eb, counter, ctrs[i].counter_event_type,
-              type, required, msg);
       }
     }
 
