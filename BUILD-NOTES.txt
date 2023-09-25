@@ -15,7 +15,7 @@ cp mk/build.mk.sample mk/build.mk
 ./configure
 make
 ./inplace/bin/ghc-stage2
-make binary-dist
+make binary-dist # This will fail if autoreconf version is too recent (Use 2.69)
 
 # For faster incremental builds after changes,
 # uncomment "stage = 2" line in mk/build.mk
@@ -74,4 +74,3 @@ Configure completed successfully.
    Tools to build Sphinx HTML documentation available: NO
    Tools to build Sphinx PDF documentation available: NO
 ----------------------------------------------------------------------
-
