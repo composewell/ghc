@@ -154,12 +154,46 @@
 #define EVENT_CONC_UPD_REM_SET_FLUSH       206
 #define EVENT_NONMOVING_HEAP_CENSUS        207
 
+/* Temporary, custom events
+ * We can perhaps add it to perf events range ultimately.
+ * POST event must be PRE event+1
+ * */
+#define EVENT_PRE_THREAD_CLOCK           300
+#define EVENT_POST_THREAD_CLOCK          301
+#define EVENT_PRE_THREAD_PAGE_FAULTS     302
+#define EVENT_POST_THREAD_PAGE_FAULTS    303
+#define EVENT_PRE_THREAD_CTX_SWITCHES    304
+#define EVENT_POST_THREAD_CTX_SWITCHES   305
+#define EVENT_PRE_THREAD_ALLOCATED       306
+#define EVENT_POST_THREAD_ALLOCATED      307
+#define EVENT_PRE_HW_CACHE_L1I           308
+#define EVENT_POST_HW_CACHE_L1I          309
+#define EVENT_PRE_HW_CACHE_L1I_MISS      310
+#define EVENT_POST_HW_CACHE_L1I_MISS     311
+#define EVENT_PRE_HW_CACHE_L1D           312
+#define EVENT_POST_HW_CACHE_L1D          313
+#define EVENT_PRE_HW_CACHE_L1D_MISS      314
+#define EVENT_POST_HW_CACHE_L1D_MISS     315
+#define EVENT_PRE_HW_CACHE_MISSES        316
+#define EVENT_POST_HW_CACHE_MISSES       317
+#define EVENT_PRE_HW_INSTRUCTIONS        318
+#define EVENT_POST_HW_INSTRUCTIONS       319
+#define EVENT_PRE_HW_BRANCH_MISSES       320
+#define EVENT_POST_HW_BRANCH_MISSES      321
+#define EVENT_PRE_THREAD_CPU_MIGRATIONS  322
+#define EVENT_POST_THREAD_CPU_MIGRATIONS 323
+#define EVENT_PRE_PROCESS_CPU_TIME       324
+#define EVENT_PRE_FOREIGN_CPU_TIME       325
+#define EVENT_PRE_GC_CPU_TIME            326
+#define EVENT_PRE_USER_CPU_TIME          327
+#define EVENT_PRE_SYSTEM_CPU_TIME        328
+
 /*
  * The highest event code +1 that ghc itself emits. Note that some event
  * ranges higher than this are reserved but not currently emitted by ghc.
  * This must match the size of the EventDesc[] array in EventLog.c
  */
-#define NUM_GHC_EVENT_TAGS        208
+#define NUM_GHC_EVENT_TAGS        329
 
 #if 0  /* DEPRECATED EVENTS: */
 /* we don't actually need to record the thread, it's implicit */

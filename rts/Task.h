@@ -110,6 +110,13 @@ typedef struct InCall_ {
     struct InCall_ *next;
 } InCall;
 
+#define MAX_TASK_COUNTERS 16
+
+struct counter_desc {
+  int counter_fd;
+  int counter_event_type;
+};
+
 typedef struct Task_ {
 #if defined(THREADED_RTS)
     OSThreadId id;              // The OS Thread ID of this task
@@ -157,6 +164,9 @@ typedef struct Task_ {
 
     // if >= 0, this Capability will be used for in-calls
     int preferred_capability;
+
+    struct counter_desc task_counters [16];
+    int task_n_counters;
 
     // Links tasks on the returning_tasks queue of a Capability, and
     // on spare_workers.
@@ -345,4 +355,10 @@ serialisableTaskId (Task *task)
 #endif
 }
 
+void perf_reset_counter(int fd);
+void perf_read_counter(int fd, StgWord64* count);
+void perf_start_counter(int fd, StgWord64* count);
+void perf_stop_counter(int fd, StgWord64* count);
+void perf_start_all_counters(Task *task);
+void perf_stop_all_counters(Task *task);
 #include "EndPrivate.h"

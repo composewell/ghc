@@ -9,6 +9,7 @@
 #include "PosixSource.h"
 #define KEEP_LOCKCLOSURE
 #include "Rts.h"
+#include "RtsFlags.h"
 
 #include "sm/Storage.h"
 #include "RtsUtils.h"
@@ -65,6 +66,15 @@
 #if defined(TRACING)
 #include "eventlog/EventLog.h"
 #endif
+
+#define LINUX_PERF_EVENTS
+#ifdef LINUX_PERF_EVENTS
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <asm/unistd.h>
+#endif
+
 /* -----------------------------------------------------------------------------
  * Global variables
  * -------------------------------------------------------------------------- */
@@ -186,6 +196,92 @@ static void deleteThread_(StgTSO *tso);
       * stack overflow
 
    ------------------------------------------------------------------------ */
+
+#define TEN_POWER9 1000000000
+
+/*
+ * XXX Somehow there is a discrepancy of 1024 bytes per thread in
+ * total_allocated bytes computed by the stgRun window and actual
+ * total_allocated bytes. When a new thread starts it has already
+ * incremented 1024 bytes before stgRun is called on it.
+ *
+ * To remove this discrepancy we can add an allocated event at thread
+ * create time.
+ */
+static void
+traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
+{
+    StgWord64 allocated;
+
+    allocated = getCurrentAllocated (cap);
+    traceEventThreadCounter(cap, t, event, allocated * sizeof(W_));
+}
+
+static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
+{
+#ifdef LINUX_PERF_EVENTS
+    StgWord64 counter;
+    bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
+                    rtsConfig.eventlog_writer != NULL;
+    struct counter_desc *ctrs = task->task_counters;
+
+    if (eventlog_enabled)
+    {
+        int i;
+        traceEventAllocated(cap, t, EVENT_PRE_THREAD_ALLOCATED);
+        /*
+         * A context switch may occur when the counter ioctl call is
+         * returning from kernel. However, that should not impact the
+         * CPU time accounting. Though any context switch may impact the
+         * wall clock time accounting. After switching out the OS thread
+         * may migrate to another CPU, which may or may not cause clock
+         * discrepancies.
+         */
+
+        for (i = 0; i < task->task_n_counters; i++) {
+          if (ctrs[i].counter_fd != -1) {
+            counter = 0;
+            perf_read_counter (ctrs[i].counter_fd, &counter);
+            //fprintf (stderr, "start counter: %lld\n", counter);
+            // We can post the event after the measurement window as
+            // well because this may add some overhead time. But it is
+            // required for measuring the timing of user windows inside the
+            // thread. XXX Now that we use the yield based mechanism for window
+            // measurements we can emit just one event after the thread is done.
+            traceEventThreadCounter(cap, t, ctrs[i].counter_event_type, counter);
+          }
+        }
+
+        perf_start_all_counters(task);
+    }
+#endif
+}
+
+static void traceEventCounterStop (Capability *cap, Task* task, StgTSO *t)
+{
+#ifdef LINUX_PERF_EVENTS
+    StgWord64 counter;
+    bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
+                    rtsConfig.eventlog_writer != NULL;
+    struct counter_desc *ctrs = task->task_counters;
+
+    if (eventlog_enabled)
+    {
+        int i;
+        perf_stop_all_counters(task);
+        for (i = 0; i < task->task_n_counters; i++) {
+          if (ctrs[i].counter_fd != -1) {
+            counter = 0;
+            perf_read_counter (ctrs[i].counter_fd, &counter);
+            //fprintf (stderr, "stop counter: %lld\n", counter);
+            traceEventThreadCounter(cap, t, ctrs[i].counter_event_type+1, counter);
+          }
+        }
+
+        traceEventAllocated(cap, t, EVENT_POST_THREAD_ALLOCATED);
+    }
+#endif
+}
 
 static Capability *
 schedule (Capability *initialCapability, Task *task)
@@ -450,7 +546,13 @@ run_thread:
         SEQ_CST_STORE(&recent_activity, ACTIVITY_YES);
     }
 
+    // Just the monotonic time is not enough, we should post thread cpu
+    // time as well. Monotonic time may include the time when the kernel
+    // thread is on runqueue if the thread gets preempted in the middle.
+    // So we cannot get accurate cpu time of the thread.
+#ifndef LINUX_PERF_EVENTS
     traceEventRunThread(cap, t);
+#endif
 
     switch (prev_what_next) {
 
@@ -463,7 +565,11 @@ run_thread:
     case ThreadRunGHC:
     {
         StgRegTable *r;
+
+        traceEventCounterStart (cap, task, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
+        t = cap->r.rCurrentTSO;
+        traceEventCounterStop (cap, task, t);
         cap = regTableToCapability(r);
         ret = r->rRet;
         break;
@@ -497,6 +603,7 @@ run_thread:
     t->saved_winerror = GetLastError();
 #endif
 
+#ifndef LINUX_PERF_EVENTS
     if (ret == ThreadBlocked) {
         if (t->why_blocked == BlockedOnBlackHole) {
             StgTSO *owner = blackHoleOwner(t->block_info.bh->bh);
@@ -512,6 +619,7 @@ run_thread:
           traceEventStopThread(cap, t, ret, 0);
         }
     }
+#endif
 
     ASSERT_FULL_CAPABILITY_INVARIANTS(cap,task);
     ASSERT(t->cap == cap);
@@ -552,6 +660,7 @@ run_thread:
         break;
 
     case ThreadFinished:
+        //fprintf (stderr, "tid %d: sec = %ld nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
         if (scheduleHandleThreadFinished(cap, task, t)) return cap;
         ASSERT_FULL_CAPABILITY_INVARIANTS(cap,task);
         break;
@@ -2443,7 +2552,25 @@ suspendThread (StgRegTable *reg, bool interruptible)
   task = cap->running_task;
   tso = cap->r.rCurrentTSO;
 
-  traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
+  //traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
+  traceEventCounterStop (cap, task, tso);
+  // This is a separate call because we release the capability and the task is
+  // used for the foreign call. At the end of the call the thread is resumed
+  // again. The OS thread might block. Since we do not have the cap, the
+  // allocated counter cannot be used here, its counts will be wrong, may even
+  // go negative because of changing the cap.
+  //
+  // Note that a safe foreign call may re-enter Haskell. Which thread does it
+  // use, a new thread?
+  //
+  // We account the foreign calls in a separate window of the thread. This
+  // window is not accounted in the overall thread accounting.
+  //
+  // XXX We can push it down before returning but we need to ensure that we
+  // are passing correct task and tso.
+#if defined(TRACING)
+  postForeignEvent(cap, task, EVENT_USER_MSG, "START:foreign");
+#endif
 
   // XXX this might not be necessary --SDM
   tso->what_next = ThreadRunGHC;
@@ -2517,7 +2644,7 @@ resumeThread (void *task_)
     }
     tso->_link = END_TSO_QUEUE;
 
-    traceEventRunThread(cap, tso);
+    // traceEventRunThread(cap, tso);
 
     /* Reset blocking status */
     tso->why_blocked  = NotBlocked;
@@ -2541,6 +2668,13 @@ resumeThread (void *task_)
     dirty_STACK(cap,tso->stackobj);
 
     IF_DEBUG(sanity, checkTSO(tso));
+#if defined(TRACING)
+    // Note that this has to be before the traceEventCounterStart call so that
+    // the window ends before the thread starts.
+    // Need to use the old task as cap->running_task is not yet set
+    postForeignEvent(cap, task, EVENT_USER_MSG, "END:foreign");
+#endif
+    traceEventCounterStart (cap, task, tso);
 
     return &cap->r;
 }

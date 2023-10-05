@@ -16,15 +16,20 @@
 #include "RtsUtils.h"
 #include "Stats.h"
 #include "EventLog.h"
+#include "sm/Storage.h"
 
 #include <string.h>
 #include <stdio.h>
+#include <stdint.h>
 #if defined(HAVE_SYS_TYPES_H)
 #include <sys/types.h>
 #endif
 #if defined(HAVE_UNISTD_H)
 #include <unistd.h>
 #endif
+
+#include <sys/resource.h>
+#include <sys/times.h>
 
 bool eventlog_enabled;
 
@@ -119,7 +124,36 @@ char *EventDesc[] = {
   [EVENT_CONC_SWEEP_BEGIN]       = "Begin concurrent sweep",
   [EVENT_CONC_SWEEP_END]         = "End concurrent sweep",
   [EVENT_CONC_UPD_REM_SET_FLUSH] = "Update remembered set flushed",
-  [EVENT_NONMOVING_HEAP_CENSUS]  = "Nonmoving heap census"
+  [EVENT_NONMOVING_HEAP_CENSUS]  = "Nonmoving heap census",
+  [EVENT_PRE_THREAD_CLOCK]    = "Run thread start CPU time",
+  [EVENT_POST_THREAD_CLOCK]    = "Run thread stop CPU time",
+  [EVENT_PRE_THREAD_PAGE_FAULTS]  = "Run thread start page faults",
+  [EVENT_POST_THREAD_PAGE_FAULTS] = "Run thread stop page faults",
+  [EVENT_PRE_THREAD_CTX_SWITCHES]  = "Run thread start ctx switches",
+  [EVENT_POST_THREAD_CTX_SWITCHES] = "Run thread stop ctx switches",
+  [EVENT_PRE_THREAD_ALLOCATED]  = "Run thread start allocations",
+  [EVENT_POST_THREAD_ALLOCATED] = "Run thread stop allocations",
+  [EVENT_PRE_HW_CACHE_L1I]  = "Run thread start l1i hit",
+  [EVENT_POST_HW_CACHE_L1I] = "Run thread stop l1i hit",
+  [EVENT_PRE_HW_CACHE_L1I_MISS]  = "Run thread start l1i miss",
+  [EVENT_POST_HW_CACHE_L1I_MISS] = "Run thread stop l1i miss",
+  [EVENT_PRE_HW_CACHE_L1D]  = "Run thread start l1i hit",
+  [EVENT_POST_HW_CACHE_L1D] = "Run thread stop l1i hit",
+  [EVENT_PRE_HW_CACHE_L1D_MISS]  = "Run thread start l1i miss",
+  [EVENT_POST_HW_CACHE_L1D_MISS] = "Run thread stop l1i miss",
+  [EVENT_PRE_HW_CACHE_MISSES]  = "Run thread start last level cache misses",
+  [EVENT_POST_HW_CACHE_MISSES] = "Run thread stop last level cache misses",
+  [EVENT_PRE_HW_INSTRUCTIONS]  = "Run thread start instructions ",
+  [EVENT_POST_HW_INSTRUCTIONS] = "Run thread stop instructions",
+  [EVENT_PRE_HW_BRANCH_MISSES]  = "Run thread start branch misses",
+  [EVENT_POST_HW_BRANCH_MISSES] = "Run thread stop branch misses",
+  [EVENT_PRE_THREAD_CPU_MIGRATIONS]  = "Run thread start cpu migrations",
+  [EVENT_POST_THREAD_CPU_MIGRATIONS] = "Run thread stop cpu migrations",
+  [EVENT_PRE_PROCESS_CPU_TIME] = "Process cpu time",
+  [EVENT_PRE_FOREIGN_CPU_TIME] = "CPU time for foreign calls",
+  [EVENT_PRE_GC_CPU_TIME] = "CPU time for GC",
+  [EVENT_PRE_USER_CPU_TIME] = "CPU time for user",
+  [EVENT_PRE_SYSTEM_CPU_TIME] = "CPU time for kernel",
 };
 
 // Event type.
@@ -291,6 +325,37 @@ init_event_types(void)
         case EVENT_RUN_THREAD:      // (cap, thread)
         case EVENT_THREAD_RUNNABLE: // (cap, thread)
         case EVENT_CREATE_SPARK_THREAD: // (cap, spark_thread)
+            eventTypes[t].size = sizeof(EventThreadID);
+            break;
+        case EVENT_PRE_THREAD_CLOCK:  // (cap, thread)
+        case EVENT_POST_THREAD_CLOCK:  // (cap, thread)
+        case EVENT_PRE_THREAD_PAGE_FAULTS:  // (cap, thread)
+        case EVENT_POST_THREAD_PAGE_FAULTS:  // (cap, thread)
+        case EVENT_PRE_THREAD_CTX_SWITCHES:  // (cap, thread)
+        case EVENT_POST_THREAD_CTX_SWITCHES:  // (cap, thread)
+        case EVENT_PRE_THREAD_ALLOCATED:  // (cap, thread)
+        case EVENT_POST_THREAD_ALLOCATED:  // (cap, thread)
+        case EVENT_PRE_HW_CACHE_L1I:
+        case EVENT_POST_HW_CACHE_L1I:
+        case EVENT_PRE_HW_CACHE_L1I_MISS:
+        case EVENT_POST_HW_CACHE_L1I_MISS:
+        case EVENT_PRE_HW_CACHE_L1D:
+        case EVENT_POST_HW_CACHE_L1D:
+        case EVENT_PRE_HW_CACHE_L1D_MISS:
+        case EVENT_POST_HW_CACHE_L1D_MISS:
+        case EVENT_PRE_HW_CACHE_MISSES:
+        case EVENT_POST_HW_CACHE_MISSES:
+        case EVENT_PRE_HW_INSTRUCTIONS:
+        case EVENT_POST_HW_INSTRUCTIONS:
+        case EVENT_PRE_HW_BRANCH_MISSES:
+        case EVENT_POST_HW_BRANCH_MISSES:
+        case EVENT_PRE_THREAD_CPU_MIGRATIONS:
+        case EVENT_POST_THREAD_CPU_MIGRATIONS:
+        case EVENT_PRE_PROCESS_CPU_TIME:
+        case EVENT_PRE_FOREIGN_CPU_TIME:
+        case EVENT_PRE_GC_CPU_TIME:
+        case EVENT_PRE_USER_CPU_TIME:
+        case EVENT_PRE_SYSTEM_CPU_TIME:
             eventTypes[t].size = sizeof(EventThreadID);
             break;
 
@@ -726,6 +791,24 @@ postSchedEvent (Capability *cap,
     }
 }
 
+/*
+ * Post a time event replacing the event timestamp field with a counter value
+ */
+void
+postSchedCounterEvent (Capability *cap,
+                EventTypeNum tag,
+                StgThreadID thread,
+                StgWord info1 //counter value
+                )
+{
+    EventsBuf *eb = &capEventBuf[cap->no];
+    ensureRoomForEvent(eb, tag);
+
+    postEventTypeNum(eb, tag);
+    postWord64(eb, info1);
+    postThreadID(eb,thread);
+}
+
 void
 postSparkEvent (Capability *cap,
                 EventTypeNum tag,
@@ -1146,16 +1229,14 @@ void postCapMsg(Capability *cap, char *msg, va_list ap)
     postLogMsg(&capEventBuf[cap->no], EVENT_LOG_MSG, msg, ap);
 }
 
-void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
+static void postCounterEvent(StgWord32 tid, EventsBuf *eb, StgWord64 counter,
+      int counter_event_type, EventTypeNum type, size_t size, char *msg)
 {
-    const size_t size = strlen(msg);
-    if (size > EVENT_PAYLOAD_SIZE_MAX) {
-        errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
-        return;
-    }
-
-    EventsBuf *eb = &capEventBuf[cap->no];
     if (!hasRoomForVariableEvent(eb, size)){
+        // XXX we should make room in the buffer before the thread
+        // starts running, and just bail out here if there is no
+        // room. If we bail out we need a uniquifier for the bracket in
+        // order to detect dropped events.
         printAndClearEventBuf(eb);
 
         if (!hasRoomForVariableEvent(eb, size)){
@@ -1164,9 +1245,110 @@ void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
         }
     }
 
-    postEventHeader(eb, type);
+    // header
+    postEventTypeNum(eb, type);
+    postWord64(eb, counter);
+
+    // payload
     postPayloadSize(eb, size);
-    postBuf(eb, (StgWord8*) msg, size);
+    postWord32 (eb, tid);
+    postWord16(eb, counter_event_type);
+    postBuf(eb, (StgWord8*) msg, (size - 6));
+}
+
+#define TEN_POWER9 1000000000
+
+// XXX To avoid the overhead of too many event logs we can maintain the
+// thread's windows in the TSO, batch the events and log them in batches, with
+// a count and total. Other stats like min/max can also be maintained if
+// required.
+static void postUserEventInternal(int isHaskell,
+    Capability *cap, Task *task, EventTypeNum type, char *msg)
+{
+    // Note: do not use the cap->running_task, it is not correct in foreign
+    // call case..
+    const size_t size = strlen(msg);
+    size_t required = size + 6;
+    StgWord32 tid = cap->r.rCurrentTSO->id;
+    StgWord64 counter;
+    struct counter_desc *ctrs = task->task_counters;
+    int i;
+    struct timespec ts;
+    struct rusage ru;
+
+    perf_stop_all_counters(task);
+
+    if (size > EVENT_PAYLOAD_SIZE_MAX) {
+        errorBelch("Event size exceeds EVENT_PAYLOAD_SIZE_MAX, bail out");
+        return;
+    }
+    EventsBuf *eb = &capEventBuf[cap->no];
+
+    //postEventHeader(eb, type);
+    for (i = 0; i < task->task_n_counters; i++) {
+      if (ctrs[i].counter_fd != -1) {
+        counter = UINT64_MAX;
+        perf_read_counter (ctrs[i].counter_fd, &counter);
+        // Strangely, this happens when we press CTRL-C. The read call
+        // is successful and returns 8 bytes read. There is no way to
+        // detect this condition from the case if the counter is really
+        // 0. It seems the counter gets reset to 0. Further calls to the
+        // counter provide increasing values.
+        if (counter == 0) {
+          fprintf (stderr, "counter %d returned zero\n", i);
+          // Temporarily exit so that we know when this happens.
+          // exit (1);
+        } else if (counter == UINT64_MAX) {
+          errorBelch("could not read counter %d", i);
+          // Temporarily exit so that we know when this happens.
+          exit (1);
+        } else {
+          // XXX If we do not post the counter it leads to a missing event
+          // confusing the event analyzer. We can put UINT64_MAX in the counter
+          // and handle accordingly in the analyzer.
+          postCounterEvent (tid, eb, counter, ctrs[i].counter_event_type,
+                type, required, msg);
+        }
+      }
+    }
+
+    if (isHaskell) {
+        counter = getCurrentAllocated (cap);
+        // We translate the PRE to POST in the event processor if this is window
+        // end message.
+        postCounterEvent (tid, eb, counter * sizeof (W_),
+              EVENT_PRE_THREAD_ALLOCATED, type, required, msg);
+
+        postCounterEvent(tid, eb, getGCCPUStats(),
+              EVENT_PRE_GC_CPU_TIME, type, required, msg);
+
+        // All the event log messages can be combined in one?
+        // rusage is the only way to get user/system CPU time, but the granularity
+        // is microseconds. Another way could be to read /proc/pid/stat.
+        getrusage(RUSAGE_SELF, &ru);
+        counter = ru.ru_utime.tv_sec * TEN_POWER9 + ru.ru_utime.tv_usec * 1000;
+        postCounterEvent(tid, eb, counter,
+              EVENT_PRE_USER_CPU_TIME, type, required, msg);
+        counter = ru.ru_stime.tv_sec * TEN_POWER9 + ru.ru_stime.tv_usec * 1000;
+        postCounterEvent(tid, eb, counter,
+              EVENT_PRE_SYSTEM_CPU_TIME, type, required, msg);
+
+        clock_gettime (CLOCK_PROCESS_CPUTIME_ID, &ts);
+        counter = ts.tv_sec * TEN_POWER9 + ts.tv_nsec;
+        postCounterEvent (tid, eb, counter,
+              EVENT_PRE_PROCESS_CPU_TIME, type, required, msg);
+    }
+    perf_start_all_counters(task);
+}
+
+void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
+{
+    postUserEventInternal (1, cap, cap->running_task, type, msg);
+}
+
+void postForeignEvent(Capability *cap, Task *task, EventTypeNum type, char *msg)
+{
+    postUserEventInternal (0, cap, task, type, msg);
 }
 
 void postUserBinaryEvent(Capability   *cap,

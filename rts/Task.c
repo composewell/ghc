@@ -25,6 +25,15 @@
 #include <signal.h>
 #endif
 
+#define LINUX_PERF_EVENTS
+#ifdef LINUX_PERF_EVENTS
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <linux/perf_event.h>
+#include <asm/unistd.h>
+#include "rts/EventLogFormat.h"
+#endif
+
 // Task lists and global counters.
 // Locks required: all_tasks_mutex.
 Task *all_tasks = NULL;
@@ -200,11 +209,199 @@ freeTask (Task *task)
     stgFree(task);
 }
 
+#ifdef LINUX_PERF_EVENTS
+static long
+perf_event_open(struct perf_event_attr *hw_event, pid_t pid,
+               int cpu, int group_fd, unsigned long flags)
+{
+   int ret;
+
+   ret = syscall(__NR_perf_event_open, hw_event, pid, cpu,
+                  group_fd, flags);
+   return ret;
+}
+
+// XXX Do this only when eventlog is enabled.
+static int perf_init_counter(int counter_type, __u64 counter_cfg) {
+     struct perf_event_attr pe;
+     int fd;
+
+     memset(&pe, 0, sizeof(struct perf_event_attr));
+     pe.size = sizeof(struct perf_event_attr);
+     pe.type = counter_type;
+     pe.config = counter_cfg;
+     pe.disabled = 1;
+     //pe.exclude_kernel = 1;
+     //pe.exclude_hv = 1;
+
+     // Monitor the current process on all CPUs
+     fd = perf_event_open(&pe, 0, -1, -1, PERF_FLAG_FD_CLOEXEC);
+     if (fd == -1) {
+        fprintf(stderr, "perf_event_open: error opening counter type %d config %llx\n",
+            pe.type, pe.config);
+        return (-1);
+     }
+
+     return fd;
+}
+
+// XXX Get the list of enabled counters from the RTS options. Enable only those
+// counters. Assign them index 0 to n. keep the count n in the task struct. And
+// iterate only up to n when processing the counters.
+static void perf_init_counters (Task *task) {
+
+    // Keep those counters first that you want least affected by
+    // enabling disabling other counters.
+    task->task_counters[0].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_TASK_CLOCK);
+    task->task_counters[0].counter_event_type = EVENT_PRE_THREAD_CLOCK;
+    task->task_n_counters = 1;
+
+    /*
+    task->task_counters[1].counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_INSTRUCTIONS);
+    task->task_counters[1].counter_event_type = EVENT_PRE_HW_INSTRUCTIONS;
+    */
+
+    /*
+    task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+    task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1I;
+
+    task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1I | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+    task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1I_MISS;
+
+    task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_ACCESS << 16));
+    task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1D;
+
+    task->task_counters[].counter_fd = perf_init_counter (PERF_TYPE_HW_CACHE, PERF_COUNT_HW_CACHE_L1D | (PERF_COUNT_HW_CACHE_OP_READ << 8) | (PERF_COUNT_HW_CACHE_RESULT_MISS << 16));
+    task->task_counters[].counter_event_type = EVENT_PRE_HW_CACHE_L1D_MISS;
+    */
+
+    /*
+    // Add cache references as well
+    task->task_counters[2].counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_CACHE_MISSES);
+    task->task_counters[2].counter_event_type = EVENT_PRE_HW_CACHE_MISSES;
+
+    task->task_counters[3].counter_fd = perf_init_counter (PERF_TYPE_HARDWARE, PERF_COUNT_HW_BRANCH_MISSES);
+    task->task_counters[3].counter_event_type = EVENT_PRE_HW_BRANCH_MISSES;
+
+    // Need minor/major
+    task->task_counters[4].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_PAGE_FAULTS);
+    task->task_counters[4].counter_event_type = EVENT_PRE_THREAD_PAGE_FAULTS;
+    */
+
+    /*
+    task->task_counters[9].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CPU_MIGRATIONS);
+    task->task_counters[9].counter_event_type = EVENT_PRE_THREAD_CPU_MIGRATIONS;
+    */
+
+    /*
+    task->task_counters[5].counter_fd = perf_init_counter (PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES);
+    task->task_counters[5].counter_event_type = EVENT_PRE_THREAD_CTX_SWITCHES;
+    */
+}
+
+void perf_reset_counter(int fd) {
+     if (fd != -1)
+     {
+       ioctl(fd, PERF_EVENT_IOC_RESET, 0);
+       ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+     } else {
+          fprintf(stderr, "perf_reset_counter: fd not set \n");
+     }
+}
+
+// XXX Use rdpmc instead of using the read syscall where possible
+// Also see: https://web.eece.maine.edu/~vweaver/projects/papi-rdpmc/espt2017_weaver_slides.pdf
+void perf_read_counter(int fd, StgWord64* count) {
+     int ret;
+
+     if (fd != -1)
+     {
+       ret = read(fd, count, sizeof(StgWord64));
+       if (ret != sizeof(StgWord64)) {
+         if (ret == -1) {
+            fprintf(stderr, "perf_read_counter: Error reading perf event count, fd %d\n", fd);
+         } else {
+            fprintf(stderr, "perf_read_counter: truncated read, fd %d\n", fd);
+         }
+       }
+     } else {
+          fprintf(stderr, "perf_read_counter: fd not set \n");
+     }
+}
+
+void perf_start_counter(int fd, StgWord64* count) {
+     int ret;
+
+     if (fd != -1)
+     {
+       ret = read(fd, count, sizeof(StgWord64));
+       if (ret == -1) {
+          fprintf(stderr, "perf_start_counter: Error reading perf event count \n");
+       }
+       ioctl(fd, PERF_EVENT_IOC_ENABLE, 0);
+     } else {
+          fprintf(stderr, "perf_start_counter: fd not set \n");
+     }
+}
+
+void perf_stop_counter(int fd, StgWord64* count) {
+     int ret;
+     if (fd != -1)
+     {
+       ioctl(fd, PERF_EVENT_IOC_DISABLE, 0);
+       ret = read(fd, count, sizeof(StgWord64));
+       if (ret == -1) {
+          fprintf(stderr, "perf_stop_counter: Error reading perf event count \n");
+       }
+     } else {
+          fprintf(stderr, "perf_stop_counter: fd not set \n");
+     }
+}
+
+// NOTE: depending on the order of counters the ioctl cost may be accounted in
+// the counters that were started earlier.
+void perf_start_all_counters(Task *task) {
+    struct counter_desc *ctrs = task->task_counters;
+    int i;
+
+    // Start the last one first
+    for (i = task->task_n_counters - 1; i >= 0; i--) {
+      if (ctrs[i].counter_fd != -1)
+      {
+        // XXX Check return value
+        ioctl(ctrs[i].counter_fd, PERF_EVENT_IOC_ENABLE, 0);
+      }
+    }
+}
+
+// NOTE: depending on the order of counters the ioctl cost may be accounted in
+// the counters that were stopped later.
+void perf_stop_all_counters(Task *task) {
+    struct counter_desc *ctrs = task->task_counters;
+    int i;
+
+    for (i = 0; i < task->task_n_counters; i++) {
+      if (ctrs[i].counter_fd != -1)
+      {
+        // XXX Check return value
+        ioctl(ctrs[i].counter_fd, PERF_EVENT_IOC_DISABLE, 0);
+      }
+    }
+}
+
+/*
+static void perf_close_counter(int fd) {
+   close(fd);
+}
+*/
+#endif
+
 /* Must take all_tasks_mutex */
 static Task*
 newTask (bool worker)
 {
     Task *task;
+    int i;
 
 #define ROUND_TO_CACHE_LINE(x) ((((x)+63) / 64) * 64)
     task = stgMallocBytes(ROUND_TO_CACHE_LINE(sizeof(Task)), "newTask");
@@ -217,6 +414,13 @@ newTask (bool worker)
     task->spare_incalls = NULL;
     task->incall        = NULL;
     task->preferred_capability = -1;
+    task->task_n_counters = 0;
+
+    // Initialize the array for safety, this is ideally not needed
+    for (i = 0; i < MAX_TASK_COUNTERS; i++) {
+      task->task_counters[i].counter_fd = -1;
+      task->task_counters[i].counter_event_type = -1;
+    }
 
 #if defined(THREADED_RTS)
     initCondition(&task->cond);
@@ -312,6 +516,10 @@ newBoundTask (void)
     task = getTask();
 
     task->stopped = false;
+
+#ifdef LINUX_PERF_EVENTS
+    perf_init_counters(task);
+#endif
 
     newInCall(task);
     return task;
@@ -434,6 +642,10 @@ workerStart(Task *task)
     if (RtsFlags.GcFlags.numa && !RtsFlags.DebugFlags.numa) {
         setThreadNode(numa_map[task->node]);
     }
+
+#ifdef LINUX_PERF_EVENTS
+    perf_init_counters(task);
+#endif
 
     // set the thread-local pointer to the Task:
     setMyTask(task);

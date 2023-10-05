@@ -37,6 +37,8 @@ void moreCapEventBufs (uint32_t from, uint32_t to);
  */
 void postSchedEvent(Capability *cap, EventTypeNum tag,
                     StgThreadID id, StgWord info1, StgWord info2);
+void postSchedCounterEvent(Capability *cap, EventTypeNum tag,
+                    StgThreadID id, StgWord info1);
 
 /*
  * Post a nullary event.
@@ -50,6 +52,7 @@ void postEventAtTimestamp (Capability *cap, EventTimestamp ts,
 void postMsg(char *msg, va_list ap);
 
 void postUserEvent(Capability *cap, EventTypeNum type, char *msg);
+void postForeignEvent(Capability *cap, Task *task, EventTypeNum type, char *msg);
 
 void postUserBinaryEvent(Capability *cap, EventTypeNum type,
                          uint8_t *msg, size_t size);

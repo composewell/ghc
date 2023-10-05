@@ -2548,7 +2548,11 @@ stg_traceEventzh ( W_ msg )
 {
 #if defined(TRACING) || defined(DEBUG)
 
+   // Need to close the nursery to update the rCurrentNursery->free so that we
+   // can use it to get the accurate allocation count.
+    CLOSE_NURSERY();
     ccall traceUserMsg(MyCapability() "ptr", msg "ptr");
+    OPEN_NURSERY();
 
 #elif defined(DTRACE)
 

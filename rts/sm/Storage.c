@@ -1389,6 +1389,30 @@ calcTotalAllocated (void)
     return tot_alloc;
 }
 
+StgWord64
+getCurrentAllocated (Capability *cap)
+{
+    bdescr *bd;
+    StgWord64 allocated;
+
+    allocated = cap->total_allocated;
+
+    // Add unfinished nursery blocks
+    bd = cap->r.rCurrentNursery;
+    if (bd) {
+      allocated += bd->free - bd->start;
+    }
+    bd = cap->r.rCurrentAlloc;
+    if (bd) {
+      allocated += bd->free - bd->start;
+    }
+    bd = cap->pinned_object_block;
+    if (bd) {
+      allocated += bd->free - bd->start;
+    }
+    return allocated;
+}
+
 //
 // Update the per-cap total_allocated numbers with an approximation of
 // the amount of memory used in each cap's nursery.

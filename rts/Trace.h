@@ -92,12 +92,19 @@ void traceEnd (void);
 
 #if defined(TRACING)
 
+void traceSchedCounterEvent_ (Capability *cap, EventTypeNum tag,
+                       StgTSO *tso, StgWord info1);
 /*
  * Record a scheduler event
  */
 #define traceSchedEvent(cap, tag, tso, other)   \
     if (RTS_UNLIKELY(TRACE_sched)) {            \
         traceSchedEvent_(cap, tag, tso, other, 0); \
+    }
+
+#define traceSchedCounterEvent(cap, tag, tso, other) \
+    if (RTS_UNLIKELY(TRACE_sched)) {            \
+        traceSchedCounterEvent_(cap, tag, tso, other); \
     }
 
 #define traceSchedEvent2(cap, tag, tso, info1, info2) \
@@ -325,6 +332,7 @@ void flushTrace(void);
 #else /* !TRACING */
 
 #define traceSchedEvent(cap, tag, tso, other) /* nothing */
+#define traceSchedCounterEvent(cap, tag, tso, other) /* nothing */
 #define traceSchedEvent2(cap, tag, tso, other, info) /* nothing */
 #define traceGcEvent(cap, tag) /* nothing */
 #define traceGcEventAtT(cap, ts, tag) /* nothing */
@@ -574,6 +582,17 @@ INLINE_HEADER void traceEventRunThread(Capability *cap STG_UNUSED,
 {
     traceSchedEvent(cap, EVENT_RUN_THREAD, tso, tso->what_next);
     dtraceRunThread((EventCapNo)cap->no, (EventThreadID)tso->id);
+}
+
+// This does not log the timestamp, instead logs the counter in the timestamp
+// field. Logging the timestamp requires making a system call which is
+// expensive and may affect the counters we are measuring.
+INLINE_HEADER void traceEventThreadCounter(Capability *cap STG_UNUSED,
+                                       StgTSO *tso STG_UNUSED,
+                                       int event_type STG_UNUSED,
+                                       StgWord64 info1 STG_UNUSED)
+{
+    traceSchedCounterEvent(cap, event_type, tso, info1);
 }
 
 INLINE_HEADER void traceEventStopThread(Capability          *cap    STG_UNUSED,
