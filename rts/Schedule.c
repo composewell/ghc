@@ -203,7 +203,7 @@ traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
     traceEventThreadCounter(cap, t, event, allocated * sizeof(W_));
 }
 
-static void updateThreadCPUTimePre (StgTSO *t)
+static void updateThreadCPUTimePre (Capability *cap, StgTSO *t)
 {
     struct timespec ts;
     int retval;
@@ -223,14 +223,22 @@ static void updateThreadCPUTimePre (StgTSO *t)
         // nsec sizeof = 8
         //fprintf (stderr, "tso nsec size: %d", sizeof(t->cur_nsec));
     };
+
+    t->cur_allocated -= getCurrentAllocated (cap);
+    // fprintf (stderr, "PRE: %d\n", t->cur_allocated);
 }
 
 // This is also used in the PrimOps as a foreign call
 void updateThreadCPUTimePostPrim
-    (StgTSO *t,
+    (Capability *cap,
+     StgTSO *t,
      StgInt64 *cur_sec_res,
-     StgInt64 *cur_nsec_res)
+     StgInt64 *cur_nsec_res,
+     StgInt32 *cur_allocated_res)
 {
+    *cur_allocated_res = t->cur_allocated + getCurrentAllocated (cap);
+    // fprintf (stderr, "POST: %d\n", t->cur_allocated);
+
     struct timespec ts;
     int retval;
     retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
@@ -255,9 +263,9 @@ void updateThreadCPUTimePostPrim
     }
 }
 
-static void updateThreadCPUTimePost (StgTSO *t)
+static void updateThreadCPUTimePost (Capability *cap, StgTSO *t)
 {
-    updateThreadCPUTimePostPrim(t, &t->cur_sec, &t->cur_nsec);
+    updateThreadCPUTimePostPrim(cap, t, &t->cur_sec, &t->cur_nsec, &t->cur_allocated);
     t->count_thread_sched_out += 1;
 }
 
@@ -611,11 +619,11 @@ run_thread:
         StgRegTable *r;
 
         traceEventCounterStart (cap, task, t);
-        updateThreadCPUTimePre (t);
+        updateThreadCPUTimePre (cap, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
         t = cap->r.rCurrentTSO;
         traceEventCounterStop (cap, task, t);
-        updateThreadCPUTimePost (t);
+        updateThreadCPUTimePost (cap, t);
         cap = regTableToCapability(r);
         ret = r->rRet;
         break;
@@ -2556,7 +2564,7 @@ suspendThread (StgRegTable *reg, bool interruptible)
 
   //traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
   traceEventCounterStop (cap, task, tso);
-  updateThreadCPUTimePost (tso);
+  updateThreadCPUTimePost (cap, tso);
   // This is a separate call because we release the capability and the task is
   // used for the foreign call. At the end of the call the thread is resumed
   // again. The OS thread might block. Since we do not have the cap, the
@@ -2674,7 +2682,7 @@ resumeThread (void *task_)
     postForeignEvent(cap, task, EVENT_USER_MSG, "END:foreign");
 #endif
     traceEventCounterStart (cap, task, tso);
-    updateThreadCPUTimePre (tso);
+    updateThreadCPUTimePre (cap, tso);
 
     return &cap->r;
 }

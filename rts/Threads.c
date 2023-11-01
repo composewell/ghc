@@ -119,6 +119,7 @@ createThread(Capability *cap, W_ size)
     tso->cur_sec = 0;
     tso->cur_nsec = 0;
     tso->count_thread_sched_out = 0;
+    tso->cur_allocated = 0;
 
     // put a stop frame on the stack
     stack->sp -= sizeofW(StgStopFrame);
