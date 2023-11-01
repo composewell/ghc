@@ -226,7 +226,10 @@ static void updateThreadCPUTimePre (StgTSO *t)
 }
 
 // This is also used in the PrimOps as a foreign call
-void updateThreadCPUTimePostPrim (StgInt64 cur_sec, StgInt64 cur_nsec, StgInt64 *cur_sec_res, StgInt64 *cur_nsec_res)
+void updateThreadCPUTimePostPrim
+    (StgTSO *t,
+     StgInt64 *cur_sec_res,
+     StgInt64 *cur_nsec_res)
 {
     struct timespec ts;
     int retval;
@@ -235,8 +238,8 @@ void updateThreadCPUTimePostPrim (StgInt64 cur_sec, StgInt64 cur_nsec, StgInt64 
         fprintf (stderr, "clock_gettime after failed");
     } else {
         //fprintf (stderr, "sec = %ld nsec = %ld\n", ts.tv_sec, ts.tv_nsec);
-        *cur_sec_res = cur_sec + ts.tv_sec;
-        *cur_nsec_res = cur_nsec + ts.tv_nsec;
+        *cur_sec_res = t->cur_sec + ts.tv_sec;
+        *cur_nsec_res = t->cur_nsec + ts.tv_nsec;
         if (*cur_nsec_res < 0) {
             *cur_nsec_res += TEN_POWER9;
             *cur_sec_res -= 1;
@@ -254,7 +257,7 @@ void updateThreadCPUTimePostPrim (StgInt64 cur_sec, StgInt64 cur_nsec, StgInt64 
 
 static void updateThreadCPUTimePost (StgTSO *t)
 {
-    updateThreadCPUTimePostPrim(t->cur_sec, t->cur_nsec, &t->cur_sec, &t->cur_nsec);
+    updateThreadCPUTimePostPrim(t, &t->cur_sec, &t->cur_nsec);
 }
 
 static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)

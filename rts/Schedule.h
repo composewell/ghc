@@ -25,7 +25,7 @@ void freeScheduler (void);
 void markScheduler (evac_fn evac, void *user);
 
 // Primitive operation used to update the threadCPUTime prim-op
-void updateThreadCPUTimePostPrim (StgInt64 cur_sec, StgInt64 cur_nsec, StgInt64 *cur_sec_res, StgInt64 *cur_nsec_res);
+void updateThreadCPUTimePostPrim (StgTSO *t, StgInt64 *cur_sec_res, StgInt64 *cur_nsec_res);
 
 // Place a new thread on the run queue of the current Capability
 void scheduleThread (Capability *cap, StgTSO *tso);
