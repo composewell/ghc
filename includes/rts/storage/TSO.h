@@ -187,6 +187,7 @@ typedef struct StgTSO_ {
     // See compiler/profiling/CostCentre.hs
     StgInt64 cur_sec;
     StgInt64 cur_nsec;
+    StgInt32 count_thread_sched_out;
 
 } *StgTSOPtr; // StgTSO defined in rts/Types.h
 

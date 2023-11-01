@@ -2860,7 +2860,7 @@ primop  ThreadStatusOp "threadStatus#" GenPrimOp
    has_side_effects = True
 
 primop  ThreadCPUTimeOp "threadCPUTime#" GenPrimOp
-   State# RealWorld -> (# State# RealWorld, INT64, INT64, INT64 #)
+   State# RealWorld -> (# State# RealWorld, INT64, INT64, INT32 #)
    with
    out_of_line = True
    has_side_effects = True

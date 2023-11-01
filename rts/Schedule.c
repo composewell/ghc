@@ -258,6 +258,7 @@ void updateThreadCPUTimePostPrim
 static void updateThreadCPUTimePost (StgTSO *t)
 {
     updateThreadCPUTimePostPrim(t, &t->cur_sec, &t->cur_nsec);
+    t->count_thread_sched_out += 1;
 }
 
 static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
