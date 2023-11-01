@@ -1028,16 +1028,29 @@ stg_threadStatuszh ( gcptr tso )
     return (ret,cap,locked);
 }
 
-stg_threadCPUTimezh (/* no args */ )
+stg_threadCPUTimezh (/* no args */)
 {
     I64 sec, nsec;
+    I64 sec_res, nsec_res;
+    W_ tmp, sec_ptr, nsec_ptr;
 
     sec   = StgTSO_cur_sec(CurrentTSO);
     nsec  = StgTSO_cur_nsec(CurrentTSO);
+
     //sec = b64[CurrentTSO+120];
     //nsec = b64[CurrentTSO+128];
     //ccall traceThreadCPUTime(sec, nsec, SIZEOF_StgHeader+OFFSET_StgTSO_cur_nsec, SIZEOF_StgHeader);
-    return (sec, nsec, nsec);
+
+    STK_CHK_GEN_N (SIZEOF_INT64 * 2);
+    reserve BYTES_TO_WDS(SIZEOF_INT64 * 2) = tmp {
+        sec_ptr = tmp + SIZEOF_INT64;
+        nsec_ptr = tmp;
+        ccall updateThreadCPUTimePostPrim(sec, nsec, sec_ptr "ptr", nsec_ptr "ptr");
+        sec_res = I64[sec_ptr];
+        nsec_res = I64[nsec_ptr];
+    }
+
+    return (sec_res, nsec_res, nsec_res);
 }
 
 /* -----------------------------------------------------------------------------
