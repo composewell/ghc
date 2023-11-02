@@ -175,6 +175,7 @@ scheduleFinalizers(Capability *cap, StgWeak *list)
                            (StgClosure *)arr)
         );
 
+    //fprintf (stderr, "scheduleFinalizers %d\n", t->id);
     scheduleThread(cap,t);
     labelThread(cap, t, "weak finalizer thread");
 }

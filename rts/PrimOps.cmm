@@ -1008,7 +1008,7 @@ stg_forkzh ( gcptr closure )
 
     gcptr threadid;
 
-    ("ptr" threadid) = ccall createIOThread( MyCapability() "ptr",
+    ("ptr" threadid) = ccall createIOThread1( MyCapability() "ptr",
                                   TO_W_(RtsFlags_GcFlags_initialStkSize(RtsFlags)),
                                   closure "ptr");
 
@@ -1032,7 +1032,7 @@ again: MAYBE_GC(again);
 
     gcptr threadid;
 
-    ("ptr" threadid) = ccall createIOThread(
+    ("ptr" threadid) = ccall createIOThread2(
         MyCapability() "ptr",
         TO_W_(RtsFlags_GcFlags_initialStkSize(RtsFlags)),
         closure "ptr");
