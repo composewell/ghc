@@ -455,6 +455,12 @@ wanteds os = concat
           ,closureField_ Both "StgTSO_cccs" "StgTSO" "prof.cccs"
           ,closureField  Both "StgTSO"      "stackobj"
 
+          -- XXX These fields might not be required for our use case
+          ,closureField  C "StgTSO"      "cur_sec"
+          ,closureField  C "StgTSO"      "cur_nsec"
+          ,closureField  C "StgTSO"      "count_thread_sched_out"
+          ,closureField  C "StgTSO"      "cur_allocated"
+
           ,closureField       Both "StgStack" "sp"
           ,closureFieldOffset Both "StgStack" "stack"
           ,closureField       C    "StgStack" "stack_size"

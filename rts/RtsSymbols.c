@@ -927,6 +927,7 @@
       SymI_HasProto(stg_takeMVarzh)                                     \
       SymI_HasProto(stg_readMVarzh)                                     \
       SymI_HasProto(stg_threadStatuszh)                                 \
+      SymI_HasProto(stg_threadCPUTimezh)                                \
       SymI_HasProto(stg_tryPutMVarzh)                                   \
       SymI_HasProto(stg_tryTakeMVarzh)                                  \
       SymI_HasProto(stg_tryReadMVarzh)                                  \

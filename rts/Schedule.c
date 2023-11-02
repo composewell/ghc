@@ -217,6 +217,72 @@ traceEventAllocated (Capability *cap, StgTSO *t, EventTypeNum event)
     traceEventThreadCounter(cap, t, event, allocated * sizeof(W_));
 }
 
+static void updateThreadCPUTimePre (Capability *cap, StgTSO *t)
+{
+    struct timespec ts;
+    int retval;
+    retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
+    if (retval != 0) {
+        fprintf (stderr, "clock_gettime before failed");
+    } else {
+        if (t->cur_sec < 0 || t->cur_nsec < 0) {
+            fprintf (stderr, "ON ENTRY ERROR: t->cur_sec = %ld t->cur_nsec = %ld\n", t->cur_sec, t->cur_nsec);
+        }
+        t->cur_sec -= ts.tv_sec;
+        t->cur_nsec -= ts.tv_nsec;
+        // fprintf (stderr, "BEFORE START: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
+        // nsec offset is 128
+        //fprintf (stderr, "tso nsec offset: %ld", (char *)(&t->cur_nsec) - (char *)t);
+        //exit (1);
+        // nsec sizeof = 8
+        //fprintf (stderr, "tso nsec size: %d", sizeof(t->cur_nsec));
+    };
+
+    t->cur_allocated -= getCurrentAllocated (cap);
+    // fprintf (stderr, "PRE: %d\n", t->cur_allocated);
+}
+
+// This is also used in the PrimOps as a foreign call
+void updateThreadCPUTimePostPrim
+    (Capability *cap,
+     StgTSO *t,
+     StgInt64 *cur_sec_res,
+     StgInt64 *cur_nsec_res,
+     StgInt32 *cur_allocated_res)
+{
+    *cur_allocated_res = t->cur_allocated + getCurrentAllocated (cap);
+    // fprintf (stderr, "POST: %d\n", t->cur_allocated);
+
+    struct timespec ts;
+    int retval;
+    retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
+    if (retval != 0) {
+        fprintf (stderr, "clock_gettime after failed");
+    } else {
+        //fprintf (stderr, "sec = %ld nsec = %ld\n", ts.tv_sec, ts.tv_nsec);
+        *cur_sec_res = t->cur_sec + ts.tv_sec;
+        *cur_nsec_res = t->cur_nsec + ts.tv_nsec;
+        if (*cur_nsec_res < 0) {
+            *cur_nsec_res += TEN_POWER9;
+            *cur_sec_res -= 1;
+        } else if (*cur_nsec_res >= TEN_POWER9) {
+            *cur_nsec_res -= TEN_POWER9;
+            *cur_sec_res += 1;
+        }
+        // fprintf (stderr, "AFTER DONE: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
+        if (*cur_sec_res < 0 || *cur_nsec_res < 0) {
+            fprintf (stderr, "ON EXIT ERROR PRIM: t->cur_sec = %ld t->cur_nsec = %ld\n", *cur_sec_res, *cur_nsec_res);
+        }
+        //fprintf (stderr, "acc sec = %ld acc nsec = %ld\n", t->cur_sec, t->cur_nsec);
+    }
+}
+
+static void updateThreadCPUTimePost (Capability *cap, StgTSO *t)
+{
+    updateThreadCPUTimePostPrim(cap, t, &t->cur_sec, &t->cur_nsec, &t->cur_allocated);
+    t->count_thread_sched_out += 1;
+}
+
 static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
 {
 #ifdef LINUX_PERF_EVENTS
@@ -567,9 +633,11 @@ run_thread:
         StgRegTable *r;
 
         traceEventCounterStart (cap, task, t);
+        updateThreadCPUTimePre (cap, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
         t = cap->r.rCurrentTSO;
         traceEventCounterStop (cap, task, t);
+        updateThreadCPUTimePost (cap, t);
         cap = regTableToCapability(r);
         ret = r->rRet;
         break;
@@ -2554,6 +2622,7 @@ suspendThread (StgRegTable *reg, bool interruptible)
 
   //traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
   traceEventCounterStop (cap, task, tso);
+  updateThreadCPUTimePost (cap, tso);
   // This is a separate call because we release the capability and the task is
   // used for the foreign call. At the end of the call the thread is resumed
   // again. The OS thread might block. Since we do not have the cap, the
@@ -2675,6 +2744,7 @@ resumeThread (void *task_)
     postForeignEvent(cap, task, EVENT_USER_MSG, "END:foreign");
 #endif
     traceEventCounterStart (cap, task, tso);
+    updateThreadCPUTimePre (cap, tso);
 
     return &cap->r;
 }
