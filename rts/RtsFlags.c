@@ -246,6 +246,7 @@ void initRtsFlagsDefaults(void)
     RtsFlags.MiscFlags.machineReadable         = false;
     RtsFlags.MiscFlags.disableDelayedOsMemoryReturn = false;
     RtsFlags.MiscFlags.internalCounters        = false;
+    RtsFlags.MiscFlags.perfCounters            = false;
     RtsFlags.MiscFlags.linkerAlwaysPic         = DEFAULT_LINKER_ALWAYS_PIC;
     RtsFlags.MiscFlags.linkerMemBase           = 0;
 
@@ -932,6 +933,11 @@ error = true;
                                     &rts_argv[arg][2])) {
                       OPTION_SAFE;
                       RtsFlags.MiscFlags.internalCounters = true;
+                  }
+                  else if (strequal("perf-counters",
+                                    &rts_argv[arg][2])) {
+                      OPTION_SAFE;
+                      RtsFlags.MiscFlags.perfCounters = true;
                   }
                   else if (strequal("info",
                                &rts_argv[arg][2])) {

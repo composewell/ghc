@@ -140,6 +140,7 @@ data MiscFlags = MiscFlags
     , machineReadable       :: Bool
     , disableDelayedOsMemoryReturn :: Bool
     , internalCounters      :: Bool
+    , perfCounters          :: Bool
     , linkerAlwaysPic       :: Bool
     , linkerMemBase         :: Word
       -- ^ address to ask the OS for memory for the linker, 0 ==> off
@@ -451,6 +452,8 @@ getMiscFlags = do
                   (#{peek MISC_FLAGS, disableDelayedOsMemoryReturn} ptr :: IO CBool))
             <*> (toBool <$>
                   (#{peek MISC_FLAGS, internalCounters} ptr :: IO CBool))
+            <*> (toBool <$>
+                  (#{peek MISC_FLAGS, perfCounters} ptr :: IO CBool))
             <*> (toBool <$>
                   (#{peek MISC_FLAGS, linkerAlwaysPic} ptr :: IO CBool))
             <*> #{peek MISC_FLAGS, linkerMemBase} ptr

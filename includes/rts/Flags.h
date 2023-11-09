@@ -223,6 +223,7 @@ typedef struct _MISC_FLAGS {
                                           tasks in the future, we'd respect it
                                           there as well. */
     bool internalCounters;       /* See Note [Internal Counter Stats] */
+    bool perfCounters;           /* Enable linux perf counters */
     bool linkerAlwaysPic;        /* Assume the object code is always PIC */
     StgWord linkerMemBase;       /* address to ask the OS for memory
                                   * for the linker, NULL ==> off */
