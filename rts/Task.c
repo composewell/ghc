@@ -518,7 +518,10 @@ newBoundTask (void)
     task->stopped = false;
 
 #ifdef LINUX_PERF_EVENTS
-    perf_init_counters(task);
+    bool perfCountersEnabled = RtsFlags.MiscFlags.perfCounters;
+    if (perfCountersEnabled) {
+        perf_init_counters(task);
+    }
 #endif
 
     newInCall(task);
@@ -644,7 +647,10 @@ workerStart(Task *task)
     }
 
 #ifdef LINUX_PERF_EVENTS
-    perf_init_counters(task);
+    bool perfCountersEnabled = RtsFlags.MiscFlags.perfCounters;
+    if (perfCountersEnabled) {
+        perf_init_counters(task);
+    }
 #endif
 
     // set the thread-local pointer to the Task:

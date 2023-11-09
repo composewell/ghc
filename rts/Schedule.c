@@ -289,9 +289,10 @@ static void traceEventCounterStart (Capability *cap, Task* task, StgTSO *t)
     StgWord64 counter;
     bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
                     rtsConfig.eventlog_writer != NULL;
+    bool perfCountersEnabled = RtsFlags.MiscFlags.perfCounters;
     struct counter_desc *ctrs = task->task_counters;
 
-    if (eventlog_enabled)
+    if (eventlog_enabled && perfCountersEnabled)
     {
         int i;
         traceEventAllocated(cap, t, EVENT_PRE_THREAD_ALLOCATED);
@@ -329,9 +330,10 @@ static void traceEventCounterStop (Capability *cap, Task* task, StgTSO *t)
     StgWord64 counter;
     bool eventlog_enabled = RtsFlags.TraceFlags.tracing == TRACE_EVENTLOG &&
                     rtsConfig.eventlog_writer != NULL;
+    bool perfCountersEnabled = RtsFlags.MiscFlags.perfCounters;
     struct counter_desc *ctrs = task->task_counters;
 
-    if (eventlog_enabled)
+    if (eventlog_enabled && perfCountersEnabled)
     {
         int i;
         perf_stop_all_counters(task);
