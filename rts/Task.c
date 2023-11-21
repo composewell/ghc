@@ -25,7 +25,7 @@
 #include <signal.h>
 #endif
 
-#define LINUX_PERF_EVENTS
+#undef LINUX_PERF_EVENTS
 #ifdef LINUX_PERF_EVENTS
 #include <unistd.h>
 #include <sys/ioctl.h>

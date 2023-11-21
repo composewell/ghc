@@ -67,7 +67,7 @@
 #include "eventlog/EventLog.h"
 #endif
 
-#define LINUX_PERF_EVENTS
+#undef LINUX_PERF_EVENTS
 #ifdef LINUX_PERF_EVENTS
 #include <unistd.h>
 #include <sys/ioctl.h>
@@ -2622,7 +2622,9 @@ suspendThread (StgRegTable *reg, bool interruptible)
   task = cap->running_task;
   tso = cap->r.rCurrentTSO;
 
-  //traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
+#ifndef LINUX_PERF_EVENTS
+  traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
+#endif
   traceEventCounterStop (cap, task, tso);
   updateThreadCPUTimePost (cap, tso);
   // This is a separate call because we release the capability and the task is
@@ -2715,7 +2717,9 @@ resumeThread (void *task_)
     }
     tso->_link = END_TSO_QUEUE;
 
-    // traceEventRunThread(cap, tso);
+#ifndef LINUX_PERF_EVENTS
+    traceEventRunThread(cap, tso);
+#endif
 
     /* Reset blocking status */
     tso->why_blocked  = NotBlocked;

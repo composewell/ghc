@@ -31,6 +31,8 @@
 #include <sys/resource.h>
 #include <sys/times.h>
 
+#undef LINUX_PERF_EVENTS
+
 bool eventlog_enabled;
 
 static const EventLogWriter *event_log_writer = NULL;
@@ -1265,6 +1267,7 @@ static void postCounterEvent(StgWord32 tid, EventsBuf *eb, StgWord64 counter,
 static void postUserEventInternal(int isHaskell,
     Capability *cap, Task *task, EventTypeNum type, char *msg)
 {
+#ifdef LINUX_PERF_EVENTS
     // Note: do not use the cap->running_task, it is not correct in foreign
     // call case..
     const size_t size = strlen(msg);
@@ -1339,6 +1342,7 @@ static void postUserEventInternal(int isHaskell,
               EVENT_PRE_PROCESS_CPU_TIME, type, required, msg);
     }
     perf_start_all_counters(task);
+#endif
 }
 
 void postUserEvent(Capability *cap, EventTypeNum type, char *msg)
