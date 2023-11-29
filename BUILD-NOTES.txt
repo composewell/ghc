@@ -1,0 +1,83 @@
+ghcup install ghc 9.0.2
+ghcup set ghc 9.0.2
+cabal install alex-3.4.0.0
+cabal install happy-1.20.0
+export PATH=~/.cabal/bin:$PATH
+git clone https://gitlab.haskell.org/harendra/ghc.git
+cd ghc
+git checkout ghc-9.2.8-develop
+git submodule update --init --recursive
+cp mk/build.mk.sample mk/build.mk
+# Uncomment "BuildFlavour = quick" line in mk/build.mk
+# sudo apt-get install autotools-dev
+# sudo apt-get install autoconf
+# sudo apt-get install libncurses5-dev
+./boot
+./configure
+make
+./inplace/bin/ghc-stage2
+make binary-dist # This will fail if autoreconf version is too recent (Use 2.69)
+
+# For faster incremental builds after changes,
+# uncomment "stage = 2" line in mk/build.mk
+
+# Ensure nix-profile is not in PATH to avoid any nix related issues
+
+# Find alex and happy versions required from aclocal.m4
+# GHC builds often fail because of incorrect happy versions
+# Need to find the correct one if the build fails
+A working configure output:
+
+----------------------------------------------------------------------
+Configure completed successfully.
+
+   Building GHC version  : 9.2.8.20231129
+          Git commit id  : 4999d2a61b35f185c285ca73bf8a767a4f35133f
+
+   Build platform        : x86_64-unknown-linux
+   Host platform         : x86_64-unknown-linux
+   Target platform       : x86_64-unknown-linux
+
+   Bootstrapping using   : /home/adithya/.ghcup/bin/ghc
+      which is version   : 9.0.2
+      with threaded RTS? : YES
+
+   Using (for bootstrapping) : gcc
+   Using gcc                 : cc
+      which is version       :
+      linker options         : -fuse-ld=gold
+   Building a cross compiler : NO
+   Unregisterised            : NO
+   TablesNextToCode          : YES
+   Build GMP in tree         : NO
+   hs-cpp       : cc
+   hs-cpp-flags : -E -undef -traditional
+   ar           : ar
+   ld           : ld.gold
+   nm           : nm
+   libtool      :
+   objdump      : objdump
+   ranlib       : ranlib
+   otool        :
+   install_name_tool :
+   windres      :
+   dllwrap      :
+   genlib       :
+   Happy        : /home/adithya/.cabal/bin/happy (1.20.0)
+   Alex         : /home/adithya/.cabal/bin/alex (3.4.0.0)
+   sphinx-build :
+   xelatex      :
+   makeinfo     :
+   git          : /usr/bin/git
+
+   Using LLVM tools
+      clang :
+      llc   :
+      opt   :
+
+   HsColour was not found; documentation will not contain source links
+
+   Tools to build Sphinx HTML documentation available: NO
+   Tools to build Sphinx PDF documentation available: NO
+   Tools to build Sphinx INFO documentation available: NO
+----------------------------------------------------------------------
