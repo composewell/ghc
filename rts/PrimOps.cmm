@@ -1106,6 +1106,43 @@ stg_threadStatuszh ( gcptr tso )
     return (ret,cap,locked);
 }
 
+stg_threadCPUTimezh (/* no args */)
+{
+    // I64 sec, nsec;
+    I64 sec_res, nsec_res;
+    I32 count_thread_sched_out, cur_allocated_res;
+    W_ tmp, sec_ptr, nsec_ptr, cur_allocated_ptr;
+
+    // sec   = StgTSO_cur_sec(CurrentTSO);
+    // nsec  = StgTSO_cur_nsec(CurrentTSO);
+
+    // sec = b64[CurrentTSO+120];
+    // nsec = b64[CurrentTSO+128];
+
+    count_thread_sched_out = I32[CurrentTSO+136];
+
+    //ccall traceThreadCPUTime(sec, nsec, SIZEOF_StgHeader+OFFSET_StgTSO_cur_nsec, SIZEOF_StgHeader);
+
+    STK_CHK_GEN_N (20);
+    reserve 20 = tmp {
+        sec_ptr = tmp;
+        nsec_ptr = tmp + 8;
+        cur_allocated_ptr = tmp + 16;
+
+        // Need to close the nursery to update the rCurrentNursery->free so that we
+        // can use it to get the accurate allocation count.
+        CLOSE_NURSERY();
+        ccall updateThreadCPUTimePostPrim(MyCapability(), CurrentTSO "ptr", sec_ptr "ptr", nsec_ptr "ptr", cur_allocated_ptr "ptr");
+        OPEN_NURSERY();
+
+        sec_res = I64[sec_ptr];
+        nsec_res = I64[nsec_ptr];
+        cur_allocated_res = I32[cur_allocated_ptr];
+    }
+
+    return (sec_res, nsec_res, cur_allocated_res, count_thread_sched_out);
+}
+
 /* -----------------------------------------------------------------------------
  * TVar primitives
  * -------------------------------------------------------------------------- */

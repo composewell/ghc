@@ -189,6 +189,137 @@ static void deleteThread_(StgTSO *tso);
 
    ------------------------------------------------------------------------ */
 
+#define TEN_POWER9 1000000000
+
+static void updateThreadCPUTimePre (Capability *cap, StgTSO *t)
+{
+/*
+    fprintf (stderr, "PRE.0: \
+tid = %d, \
+t->cur_sec = %ld, \
+t->cur_nsec = %ld, \
+t->cur_allocated = %d\n", t->id, t->cur_sec, t->cur_nsec, t->cur_allocated);
+*/
+    struct timespec ts;
+    int retval;
+    retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
+    if (retval != 0) {
+        fprintf (stderr, "clock_gettime before failed");
+    } else {
+        if (t->cur_sec < 0 || t->cur_nsec < 0) {
+            fprintf (stderr, "ON ENTRY ERROR: \
+tid = %d, \
+t->cur_sec = %ld \
+t->cur_nsec = %ld \
+t->cur_allocated = %d\n", t->id, t->cur_sec, t->cur_nsec, t->cur_allocated);
+        }
+        t->cur_sec -= ts.tv_sec;
+        t->cur_nsec -= ts.tv_nsec;
+
+        // nsec offset is 128
+        //fprintf (stderr, "tso nsec offset: %ld", (char *)(&t->cur_nsec) - (char *)t);
+        //exit (1);
+        // nsec sizeof = 8
+        //fprintf (stderr, "tso nsec size: %d", sizeof(t->cur_nsec));
+    };
+
+    t->cur_allocated -= getCurrentAllocated (cap);
+/*
+    fprintf (stderr, "PRE.-: \
+tid = %d, \
+t->cur_sec = %ld, \
+t->cur_nsec = %ld, \
+t->cur_allocated = %d\n",
+             t->id,
+             ts.tv_sec,
+             ts.tv_nsec,
+             getCurrentAllocated (cap));
+
+    fprintf (stderr, "PRE.1: \
+tid = %d, \
+t->cur_sec = %ld, \
+t->cur_nsec = %ld, \
+t->cur_allocated = %d\n", t->id, t->cur_sec, t->cur_nsec, t->cur_allocated);
+*/
+}
+
+// This is also used in the PrimOps as a foreign call
+void updateThreadCPUTimePostPrim
+    (Capability *cap,
+     StgTSO *t,
+     StgInt64 *cur_sec_res,
+     StgInt64 *cur_nsec_res,
+     StgInt32 *cur_allocated_res)
+{
+/*
+    fprintf (stderr, "POST.0: \
+tid = %d, \
+t->cur_sec = %ld, \
+t->cur_nsec = %ld, \
+t->cur_allocated = %d\n", t->id, t->cur_sec, t->cur_nsec, t->cur_allocated);
+*/
+    *cur_allocated_res = t->cur_allocated + getCurrentAllocated (cap);
+    // fprintf (stderr, "POST: %d\n", t->cur_allocated);
+
+    struct timespec ts;
+    int retval;
+    retval = clock_gettime (CLOCK_THREAD_CPUTIME_ID, &ts);
+    if (retval != 0) {
+        fprintf (stderr, "clock_gettime after failed");
+    } else {
+        //fprintf (stderr, "sec = %ld nsec = %ld\n", ts.tv_sec, ts.tv_nsec);
+        *cur_sec_res = t->cur_sec + ts.tv_sec;
+        *cur_nsec_res = t->cur_nsec + ts.tv_nsec;
+        if (*cur_nsec_res < 0) {
+            *cur_nsec_res += TEN_POWER9;
+            *cur_sec_res -= 1;
+        } else if (*cur_nsec_res >= TEN_POWER9) {
+            *cur_nsec_res -= TEN_POWER9;
+            *cur_sec_res += 1;
+        }
+        // fprintf (stderr, "AFTER DONE: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
+        if (*cur_sec_res < 0 || *cur_nsec_res < 0) {
+            fprintf (stderr, "ON EXIT ERROR PRIM: \
+tid = %d, \
+t->cur_sec = %ld \
+t->cur_nsec = %ld \
+t->cur_allocated = %d\n",
+             t->id,
+             *cur_sec_res,
+             *cur_nsec_res,
+             *cur_allocated_res);
+        }
+        //fprintf (stderr, "acc sec = %ld acc nsec = %ld\n", t->cur_sec, t->cur_nsec);
+    }
+/*
+    fprintf (stderr, "POST.+: \
+tid = %d, \
+t->cur_sec = %ld, \
+t->cur_nsec = %ld, \
+t->cur_allocated = %d\n",
+             t->id,
+             ts.tv_sec,
+             ts.tv_nsec,
+             getCurrentAllocated (cap));
+
+    fprintf (stderr, "POST.1: \
+tid = %d, \
+t->cur_sec = %ld, \
+t->cur_nsec = %ld, \
+t->cur_allocated = %d\n",
+             t->id,
+             *cur_sec_res,
+             *cur_nsec_res,
+             *cur_allocated_res);
+             */
+}
+
+static void updateThreadCPUTimePost (Capability *cap, StgTSO *t)
+{
+    updateThreadCPUTimePostPrim(cap, t, &t->cur_sec, &t->cur_nsec, &t->cur_allocated);
+    t->count_thread_sched_out += 1;
+}
+
 static Capability *
 schedule (Capability *initialCapability, Task *task)
 {
@@ -478,7 +609,11 @@ run_thread:
     case ThreadRunGHC:
     {
         StgRegTable *r;
+
+        updateThreadCPUTimePre (cap, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
+        updateThreadCPUTimePost (cap, t);
+
         cap = regTableToCapability(r);
         ret = r->rRet;
         break;
@@ -2454,6 +2589,7 @@ suspendThread (StgRegTable *reg, bool interruptible)
   task = cap->running_task;
   tso = cap->r.rCurrentTSO;
 
+  updateThreadCPUTimePost (cap, tso);
   traceEventStopThread(cap, tso, THREAD_SUSPENDED_FOREIGN_CALL, 0);
 
   // XXX this might not be necessary --SDM
@@ -2552,6 +2688,8 @@ resumeThread (void *task_)
     dirty_STACK(cap,tso->stackobj);
 
     IF_DEBUG(sanity, checkTSO(tso));
+
+    updateThreadCPUTimePre (cap, tso);
 
     return &cap->r;
 }

@@ -1638,6 +1638,7 @@ emitPrimOp dflags primop = case primop of
   IsCurrentThreadBoundOp -> alwaysExternal
   NoDuplicateOp -> alwaysExternal
   ThreadStatusOp -> alwaysExternal
+  ThreadCPUTimeOp -> alwaysExternal
   MkWeakOp -> alwaysExternal
   MkWeakNoFinalizerOp -> alwaysExternal
   AddCFinalizerToWeakOp -> alwaysExternal
