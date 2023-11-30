@@ -612,9 +612,10 @@ run_thread:
 
         updateThreadCPUTimePre (cap, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
+        cap = regTableToCapability(r);
+        t = cap->r.rCurrentTSO;
         updateThreadCPUTimePost (cap, t);
 
-        cap = regTableToCapability(r);
         ret = r->rRet;
         break;
     }
