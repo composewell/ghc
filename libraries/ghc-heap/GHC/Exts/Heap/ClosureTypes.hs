@@ -93,6 +93,7 @@ closureTypeHeaderSize closType =
         ct | ct == AP_STACK -> thunkHeader
         _ -> header
   where
+    -- Book keeping here?
     header = 1 + prof
     thunkHeader = 2 + prof
 #if defined(PROFILING)
