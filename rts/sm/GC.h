@@ -31,6 +31,9 @@ void         markCAFs     ( evac_fn evac, void *user );
 
 bool doIdleGCWork(Capability *cap, bool all);
 
+extern StgWord16 global_gc_id;
+StgWord16 get_gc_id(void);
+
 extern uint32_t N;
 extern bool major_gc;
 /* See Note [Deadlock detection under nonmoving collector]. */

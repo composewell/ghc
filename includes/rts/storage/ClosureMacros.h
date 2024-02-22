@@ -140,9 +140,18 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
 #define SET_PROF_HDR(c,ccs)
 #endif
 
+#define TAG_GC_ID 1
+
+#if defined(TAG_GC_ID)
+#define SET_GC_ID(c,gc_id_) (c)->header.gc_id = gc_id_
+#else
+#define SET_GC_ID(c,gc_id)
+#endif
+
 #define SET_HDR(c,_info,ccs)                            \
    {                                                    \
         SET_PROF_HDR((StgClosure *)(c),ccs);            \
+        SET_GC_ID((StgClosure *)(c),get_gc_id());       \
         RELAXED_STORE(&(c)->header.info, _info);        \
    }
 

@@ -62,8 +62,13 @@ typedef struct {
    word for the entry code pointer.
    -------------------------------------------------------------------------- */
 
+#define TAG_GC_ID 1
+
 typedef struct {
     const StgInfoTable* info;
+#if defined(TAG_GC_ID)
+    StgWord16             gc_id;
+#endif
 #if defined(PROFILING)
     StgProfHeader         prof;
 #endif
@@ -71,6 +76,9 @@ typedef struct {
 
 typedef struct {
     const StgInfoTable* info;
+#if defined(TAG_GC_ID)
+    StgWord16             gc_id;
+#endif
 #if defined(PROFILING)
     StgProfHeader         prof;
 #endif

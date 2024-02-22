@@ -167,6 +167,8 @@ bool work_stealing;
 uint32_t static_flag = STATIC_FLAG_B;
 uint32_t prev_static_flag = STATIC_FLAG_A;
 
+StgWord16 global_gc_id = 0;
+
 DECLARE_GCT
 
 /* -----------------------------------------------------------------------------
@@ -229,6 +231,13 @@ addMutListScavStats(const MutListScavStats *src,
 }
 #endif /* DEBUG */
 
+/* -----------------------------------------------------------------------------
+   Function get the global_gc_id
+   -------------------------------------------------------------------------- */
+
+StgWord16 get_gc_id() {
+    return global_gc_id;
+}
 
 /* -----------------------------------------------------------------------------
    GarbageCollect: the main entry point to the garbage collector.
@@ -257,6 +266,9 @@ GarbageCollect (uint32_t collect_gen,
   uint32_t g, n;
   // The time we should report our heap census as occurring at, if necessary.
   Time mut_time = 0;
+
+  // Increment the global gc id
+  global_gc_id = global_gc_id + 1;
 
   if (do_heap_census) {
       RTSStats stats;
