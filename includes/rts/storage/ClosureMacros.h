@@ -135,14 +135,23 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
  */
 #define SET_PROF_HDR(c,ccs_)            \
         ((c)->header.prof.ccs = ccs_,   \
+         (c)->header.prof.gc_id = get_gc_id(),  \
         LDV_RECORD_CREATE((c)))
 #else
 #define SET_PROF_HDR(c,ccs)
 #endif
 
+#if defined(PROFILING)
+#define DEBUG_PROF_HDR(c)            \
+        fprintf(stderr, "DEBUG_PROF_HDR.gc_id: %d\n", (c)->header.prof.gc_id)
+#else
+#define DEBUG_PROF_HDR(c)
+#endif
+
 #define SET_HDR(c,_info,ccs)                            \
    {                                                    \
         SET_PROF_HDR((StgClosure *)(c),ccs);            \
+        DEBUG_PROF_HDR((StgClosure *)(c));              \
         RELAXED_STORE(&(c)->header.info, _info);        \
    }
 

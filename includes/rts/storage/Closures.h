@@ -36,6 +36,7 @@ typedef struct {
 
     StgWord ldvw;             /* Lag/Drag/Void Word */
   } hp;
+  StgWord gc_id;
 } StgProfHeader;
 
 /* -----------------------------------------------------------------------------

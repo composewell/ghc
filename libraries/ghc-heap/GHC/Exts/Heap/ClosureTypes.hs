@@ -97,7 +97,7 @@ closureTypeHeaderSize closType =
     header = 1 + prof
     thunkHeader = 2 + prof
 #if defined(PROFILING)
-    prof = 2
+    prof = 3
 #else
     prof = 0
 #endif
