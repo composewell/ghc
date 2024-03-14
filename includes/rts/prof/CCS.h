@@ -215,7 +215,7 @@ extern CostCentre * RTS_VAR(CC_LIST);               // registered CC list
  * ---------------------------------------------------------------------------*/
 
 /* eliminate profiling overhead from allocation costs */
-#define CCS_ALLOC(ccs, size) (ccs)->mem_alloc += ((size)-sizeofW(StgProfHeader))
+#define CCS_ALLOC(ccs, size) doNothing()
 #define ENTER_CCS_THUNK(cap,p) cap->r.rCCCS = p->header.prof.ccs
 
 #else /* !PROFILING */
