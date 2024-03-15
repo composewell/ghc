@@ -376,6 +376,7 @@
 #if defined(PROFILING)
 #define PROF_HDR_FIELDS(w_,hdr1,hdr2)          \
   w_ hdr1,                                     \
+  w_ hdr2, \
   w_ hdr2,
 #else
 #define PROF_HDR_FIELDS(w_,hdr1,hdr2) /* nothing */
