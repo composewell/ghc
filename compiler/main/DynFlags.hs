@@ -1732,6 +1732,7 @@ data Way
   | WayDebug
   | WayProf
   | WayEventLog
+  | WayGCId
   | WayDyn
   deriving (Eq, Ord, Show)
 
@@ -1767,6 +1768,7 @@ wayTag WayDebug    = "debug"
 wayTag WayDyn      = "dyn"
 wayTag WayProf     = "p"
 wayTag WayEventLog = "l"
+wayTag WayGCId     = "gcid"
 
 wayRTSOnly :: Way -> Bool
 wayRTSOnly (WayCustom {}) = False
@@ -1775,6 +1777,7 @@ wayRTSOnly WayDebug    = True
 wayRTSOnly WayDyn      = False
 wayRTSOnly WayProf     = False
 wayRTSOnly WayEventLog = True
+wayRTSOnly WayGCId     = True
 
 wayDesc :: Way -> String
 wayDesc (WayCustom xs) = xs
@@ -1783,6 +1786,7 @@ wayDesc WayDebug    = "Debug"
 wayDesc WayDyn      = "Dynamic"
 wayDesc WayProf     = "Profiling"
 wayDesc WayEventLog = "RTS Event Logging"
+wayDesc WayGCId     = "RTS add GC Id"
 
 -- Turn these flags on when enabling this way
 wayGeneralFlags :: Platform -> Way -> [GeneralFlag]
@@ -1799,6 +1803,7 @@ wayGeneralFlags _ WayDyn      = [Opt_PIC, Opt_ExternalDynamicRefs]
     -- modules of the main program with -fPIC when using -dynamic.
 wayGeneralFlags _ WayProf     = [Opt_SccProfilingOn]
 wayGeneralFlags _ WayEventLog = []
+wayGeneralFlags _ WayGCId     = []
 
 -- Turn these flags off when enabling this way
 wayUnsetGeneralFlags :: Platform -> Way -> [GeneralFlag]
@@ -1812,6 +1817,7 @@ wayUnsetGeneralFlags _ WayDyn      = [-- There's no point splitting
                                       Opt_SplitSections]
 wayUnsetGeneralFlags _ WayProf     = []
 wayUnsetGeneralFlags _ WayEventLog = []
+wayUnsetGeneralFlags _ WayGCId     = []
 
 wayOptc :: Platform -> Way -> [String]
 wayOptc _ (WayCustom {}) = []
@@ -1823,6 +1829,7 @@ wayOptc _ WayDebug      = []
 wayOptc _ WayDyn        = []
 wayOptc _ WayProf       = ["-DPROFILING"]
 wayOptc _ WayEventLog   = ["-DTRACING"]
+wayOptc _ WayGCId       = ["-DGCID"]
 
 wayOptl :: Platform -> Way -> [String]
 wayOptl _ (WayCustom {}) = []
@@ -1838,6 +1845,7 @@ wayOptl _ WayDebug      = []
 wayOptl _ WayDyn        = []
 wayOptl _ WayProf       = []
 wayOptl _ WayEventLog   = []
+wayOptl _ WayGCId       = []
 
 wayOptP :: Platform -> Way -> [String]
 wayOptP _ (WayCustom {}) = []
@@ -1846,6 +1854,7 @@ wayOptP _ WayDebug    = []
 wayOptP _ WayDyn      = []
 wayOptP _ WayProf     = ["-DPROFILING"]
 wayOptP _ WayEventLog = ["-DTRACING"]
+wayOptP _ WayGCId     = ["-DGCID"]
 
 whenGeneratingDynamicToo :: MonadIO m => DynFlags -> m () -> m ()
 whenGeneratingDynamicToo dflags f = ifGeneratingDynamicToo dflags f (return ())
@@ -3029,6 +3038,7 @@ dynamic_flags_deps = [
     ------- ways ---------------------------------------------------------------
   , make_ord_flag defGhcFlag "prof"           (NoArg (addWay WayProf))
   , make_ord_flag defGhcFlag "eventlog"       (NoArg (addWay WayEventLog))
+  , make_ord_flag defGhcFlag "gcid"           (NoArg (addWay WayGCId))
   , make_dep_flag defGhcFlag "smp"
       (NoArg $ addWay WayThreaded) "Use -threaded instead"
   , make_ord_flag defGhcFlag "debug"          (NoArg (addWay WayDebug))
