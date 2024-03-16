@@ -5,6 +5,7 @@ module Way (
     threadedDebug, threadedProfiling, threadedLogging, threadedDynamic,
     threadedDebugProfiling, threadedDebugDynamic, threadedProfilingDynamic,
     threadedLoggingDynamic, debugProfiling, debugDynamic, loggingDynamic,
+    gcid,
 
     wayPrefix, waySuffix, hisuf, osuf, hcsuf, obootsuf, hibootsuf, ssuf
     ) where
@@ -31,6 +32,9 @@ profilingDynamic = wayFromUnits [Profiling, Dynamic]
 -- | Build RTS with event logging.
 logging :: Way
 logging = wayFromUnits [Logging]
+
+gcid :: Way
+gcid = wayFromUnits [GcId]
 
 -- | Build multithreaded RTS.
 threaded :: Way
@@ -62,7 +66,8 @@ allWays =
     [ vanilla, profiling, dynamic, profilingDynamic, threaded, debug, logging
     , threadedDebug, threadedProfiling, threadedLogging, threadedDynamic
     , threadedDebugProfiling, threadedDebugDynamic, threadedProfilingDynamic
-    , threadedLoggingDynamic, debugProfiling, debugDynamic, loggingDynamic ]
+    , threadedLoggingDynamic, debugProfiling, debugDynamic, loggingDynamic
+    , gcid ]
 
 wayPrefix :: Way -> String
 wayPrefix way | way == vanilla = ""

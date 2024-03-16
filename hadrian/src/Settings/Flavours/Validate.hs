@@ -13,7 +13,7 @@ validateFlavour = werror $ defaultFlavour
     , libraryWays = mconcat [ pure [vanilla]
                             , notStage0 ? platformSupportsSharedLibs ? pure [dynamic]
                             ]
-    , rtsWays = mconcat [ pure [vanilla, threaded, debug, logging, threadedDebug, threadedLogging]
+    , rtsWays = mconcat [ pure [vanilla, threaded, debug, logging, threadedDebug, threadedLogging, gcid]
                         , notStage0 ? platformSupportsSharedLibs ? pure
                             [ dynamic, threadedDynamic, debugDynamic, threadedDebugDynamic
                             , loggingDynamic, threadedLoggingDynamic
