@@ -24,6 +24,10 @@ void exitScheduler (bool wait_foreign);
 void freeScheduler (void);
 void markScheduler (evac_fn evac, void *user);
 
+void traceRegs
+    (long int hp, long int hpAlloc, long int sp, long int spLim,
+     long int spLimMinusWRDS);
+
 // Primitive operation used to update the threadCPUTime prim-op
 void updateThreadCPUTimePostPrim
     (Capability *cap,

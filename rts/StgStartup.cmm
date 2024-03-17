@@ -97,6 +97,7 @@ INFO_TABLE_RET(stg_stop_thread, STOP_FRAME,
 stg_returnToStackTop /* no args: explicit stack layout */
 {
   LOAD_THREAD_STATE();
+  foreign "C" traceRegs(Hp, HpAlloc, Sp, SpLim, SpLim - WDS(RESERVED_STACK_WORDS));
   CHECK_SENSIBLE_REGS();
   jump %ENTRY_CODE(Sp(0)) [];
 }
