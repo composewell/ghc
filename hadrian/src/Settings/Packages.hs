@@ -353,7 +353,7 @@ rtsPackageArgs = package rts ? do
         [ builder (Cabal Flags) ? mconcat
           [ any (wayUnit Profiling) rtsWays ? arg "profiling"
           , any (wayUnit Debug) rtsWays ? arg "debug"
-          , any (wayUnit Logging) rtsWays ? arg "logging"
+          , any (wayUnit GcId) rtsWays ? arg "gcid"
           , any (wayUnit Dynamic) rtsWays ? arg "dynamic"
           , Debug `wayUnit` way           ? arg "find-ptr"
           ]

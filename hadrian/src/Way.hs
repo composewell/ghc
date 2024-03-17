@@ -30,7 +30,7 @@ profilingDynamic = wayFromUnits [Profiling, Dynamic]
 -- RTS only ways below. See compiler/main/DynFlags.hs.
 -- | Build RTS with event logging.
 logging :: Way
-logging = wayFromUnits [Logging]
+logging = wayFromUnits [GcId]
 
 -- | Build multithreaded RTS.
 threaded :: Way
@@ -46,15 +46,15 @@ threadedDebug, threadedProfiling, threadedLogging, threadedDynamic,
     threadedLoggingDynamic, debugProfiling, debugDynamic, loggingDynamic :: Way
 threadedDebug            = wayFromUnits [Threaded, Debug]
 threadedProfiling        = wayFromUnits [Threaded, Profiling]
-threadedLogging          = wayFromUnits [Threaded, Logging]
+threadedLogging          = wayFromUnits [Threaded, GcId]
 threadedDynamic          = wayFromUnits [Threaded, Dynamic]
 threadedDebugProfiling   = wayFromUnits [Threaded, Debug, Profiling]
 threadedDebugDynamic     = wayFromUnits [Threaded, Debug, Dynamic]
 threadedProfilingDynamic = wayFromUnits [Threaded, Profiling, Dynamic]
-threadedLoggingDynamic   = wayFromUnits [Threaded, Logging, Dynamic]
+threadedLoggingDynamic   = wayFromUnits [Threaded, GcId, Dynamic]
 debugProfiling           = wayFromUnits [Debug, Profiling]
 debugDynamic             = wayFromUnits [Debug, Dynamic]
-loggingDynamic           = wayFromUnits [Logging, Dynamic]
+loggingDynamic           = wayFromUnits [GcId, Dynamic]
 
 -- | All ways supported by the build system.
 allWays :: [Way]
