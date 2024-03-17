@@ -15,7 +15,6 @@ data WayUnit = Threaded
              | Debug
              | Profiling
              | Logging
-             | GcId
              | Dynamic
              deriving (Bounded, Enum, Eq, Ord)
 
@@ -26,7 +25,6 @@ instance Show WayUnit where
         Debug     -> "debug"
         Profiling -> "p"
         Logging   -> "l"
-        GcId      -> "gcid"
         Dynamic   -> "dyn"
 
 instance Read WayUnit where

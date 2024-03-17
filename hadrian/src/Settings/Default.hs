@@ -156,7 +156,7 @@ defaultRtsWays = mconcat
   [ pure [vanilla, threaded]
   , notStage0 ? pure
       [ profiling, threadedProfiling, debugProfiling, threadedDebugProfiling
-      , logging, threadedLogging, gcid
+      , logging, threadedLogging
       , debug, threadedDebug
       ]
   , notStage0 ? platformSupportsSharedLibs ? pure

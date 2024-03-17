@@ -16,7 +16,7 @@ quickFlavour = defaultFlavour
                     , notStage0 ? platformSupportsSharedLibs ? pure [dynamic] ]
     , rtsWays     = mconcat
                     [ pure
-                      [ vanilla, threaded, logging, debug, gcid
+                      [ vanilla, threaded, logging, debug
                       , threadedDebug, threadedLogging, threaded ]
                     , notStage0 ? platformSupportsSharedLibs ? pure
                       [ dynamic, debugDynamic, threadedDynamic, loggingDynamic
