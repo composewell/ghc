@@ -636,7 +636,14 @@ run_thread:
 
         traceEventCounterStart (cap, task, t);
         updateThreadCPUTimePre (cap, t);
+        fprintf (stderr, "TRACE 1\n");
+        fprintf (stderr, "Hp      %lu\n", cap->r.rHp);
+        fprintf (stderr, "HpAlloc %lu\n", cap->r.rHpAlloc);
+        fprintf (stderr, "Sp      %lu\n", cap->r.rSp);
+        fprintf (stderr, "SpLim   %lu\n", cap->r.rSpLim);
+        fprintf (stderr, "WDS(RESERVED_STACK_WORDS) %d\n", 21 * 8);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
+        fprintf (stderr, "TRACE 2\n");
         t = cap->r.rCurrentTSO;
         traceEventCounterStop (cap, task, t);
         updateThreadCPUTimePost (cap, t);
