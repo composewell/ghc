@@ -378,8 +378,13 @@
   w_ hdr1,                                     \
   w_ hdr2,
 #else
+#if defined(TRACING)
+#define PROF_HDR_FIELDS(w_,hdr1,hdr2) w_ hdr1,
+#else
 #define PROF_HDR_FIELDS(w_,hdr1,hdr2) /* nothing */
 #endif
+#endif
+
 
 /* -------------------------------------------------------------------------
    Allocation and garbage collection

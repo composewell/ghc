@@ -93,8 +93,13 @@ closureTypeHeaderSize closType =
         ct | ct == AP_STACK -> thunkHeader
         _ -> header
   where
-    header = 1 + prof
-    thunkHeader = 2 + prof
+    header = 1 + prof + gcid
+    thunkHeader = 2 + prof + gcid
+#if defined(TRACING)
+    gcid = 1
+#else
+    gcid = 0
+#endif
 #if defined(PROFILING)
     prof = 2
 #else

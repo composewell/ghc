@@ -84,6 +84,7 @@ INFO_TABLE_RET ( stg_bh_upd_frame, UPDATE_FRAME,
                  UPDATE_FRAME_FIELDS(W_,P_,info_ptr,ccs,_unused,updatee) )
     return (P_ ret) /* the closure being returned */
 {
+    foreign "C" traceRegs(Hp, HpAlloc, Sp, SpLim, SpLim - WDS(RESERVED_STACK_WORDS));
     // This all compiles away to a single jump instruction (sigh)
     jump RET_LBL(stg_marked_upd_frame)
         ( UPDATE_FRAME_FIELDS(,,info_ptr,ccs,_unused,updatee) )

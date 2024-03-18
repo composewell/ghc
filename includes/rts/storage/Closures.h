@@ -64,6 +64,9 @@ typedef struct {
 
 typedef struct {
     const StgInfoTable* info;
+#if defined(TRACING)
+    StgWord             gc_id;
+#endif
 #if defined(PROFILING)
     StgProfHeader         prof;
 #endif
@@ -71,6 +74,9 @@ typedef struct {
 
 typedef struct {
     const StgInfoTable* info;
+#if defined(TRACING)
+    StgWord             gc_id;
+#endif
 #if defined(PROFILING)
     StgProfHeader         prof;
 #endif
