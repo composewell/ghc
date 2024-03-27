@@ -76,7 +76,7 @@ costCentreFrom dflags cl = CmmLoad (cmmOffsetB dflags cl (oFFSET_StgHeader_ccs d
 -- | The profiling header words in a static closure
 staticProfHdr :: DynFlags -> CostCentreStack -> [CmmLit]
 staticProfHdr dflags ccs
- = ifProfilingL dflags [mkCCostCentreStack ccs, staticLdvInit dflags]
+ = ifProfilingL dflags [mkCCostCentreStack dontCareCCS, staticLdvInit dflags]
 
 -- | Profiling header words in a dynamic closure
 dynProfHdr :: DynFlags -> CmmExpr -> [CmmExpr]
@@ -122,19 +122,22 @@ We want this kind of code:
 
 saveCurrentCostCentre :: FCode (Maybe LocalReg)
         -- Returns Nothing if profiling is off
-saveCurrentCostCentre
+saveCurrentCostCentre = return Nothing
+-- XXX Use ifProfiling instead
+{-
   = do dflags <- getDynFlags
        if not (gopt Opt_SccProfilingOn dflags)
            then return Nothing
            else do local_cc <- newTemp (ccType dflags)
                    emitAssign (CmmLocal local_cc) cccsExpr
                    return (Just local_cc)
+-}
 
 restoreCurrentCostCentre :: Maybe LocalReg -> FCode ()
 restoreCurrentCostCentre Nothing
   = return ()
-restoreCurrentCostCentre (Just local_cc)
-  = emit (storeCurCCS (CmmReg (CmmLocal local_cc)))
+restoreCurrentCostCentre (Just local_cc) = return ()
+  -- = emit (storeCurCCS (CmmReg (CmmLocal local_cc)))
 
 
 -------------------------------------------------------------------------------
@@ -185,11 +188,13 @@ enterCostCentreFun ccs closure =
        else return () -- top-level function, nothing to do
 
 ifProfiling :: FCode () -> FCode ()
-ifProfiling code
+ifProfiling _code = return ()
+{-
   = do dflags <- getDynFlags
        if gopt Opt_SccProfilingOn dflags
            then code
            else return ()
+-}
 
 ifProfilingL :: DynFlags -> [a] -> [a]
 ifProfilingL dflags xs
@@ -201,13 +206,16 @@ ifProfilingL dflags xs
 --        Initialising Cost Centres & CCSs
 ---------------------------------------------------------------
 
+-- XXX Who calls this?
 initCostCentres :: CollectedCCs -> FCode ()
 -- Emit the declarations
-initCostCentres (local_CCs, singleton_CCSs)
+initCostCentres (local_CCs, singleton_CCSs) = return ()
+{-
   = do dflags <- getDynFlags
        when (gopt Opt_SccProfilingOn dflags) $
            do mapM_ emitCostCentreDecl local_CCs
               mapM_ emitCostCentreStackDecl singleton_CCSs
+-}
 
 
 emitCostCentreDecl :: CostCentre -> FCode ()
@@ -269,7 +277,8 @@ sizeof_ccs_words dflags
 -- Set the current cost centre stack
 
 emitSetCCC :: CostCentre -> Bool -> Bool -> FCode ()
-emitSetCCC cc tick push
+emitSetCCC cc tick push = return ()
+{-
  = do dflags <- getDynFlags
       if not (gopt Opt_SccProfilingOn dflags)
           then return ()
@@ -277,6 +286,7 @@ emitSetCCC cc tick push
                   pushCostCentre tmp cccsExpr cc
                   when tick $ emit (bumpSccCount dflags (CmmReg (CmmLocal tmp)))
                   when push $ emit (storeCurCCS (CmmReg (CmmLocal tmp)))
+-}
 
 pushCostCentre :: LocalReg -> CmmExpr -> CostCentre -> FCode ()
 pushCostCentre result ccs cc
@@ -321,6 +331,7 @@ ldvRecordCreate closure = do
   dflags <- getDynFlags
   emit $ mkStore (ldvWord dflags closure) (dynLdvInit dflags)
 
+-- XXX We can use this to record a last used gc-id/timestamp
 --
 -- | Called when a closure is entered, marks the closure as having
 -- been "used".  The closure is not an "inherently used" one.  The

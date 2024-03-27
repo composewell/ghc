@@ -200,7 +200,7 @@ corePrepPgm hsc_env this_mod mod_loc binds data_tycons =
                       return (deFloatTop (floats1 `appendFloats` floats2))
 
     endPassIO hsc_env alwaysQualify CorePrep binds_out []
-    return (binds_out, cost_centres)
+    return (binds_out, S.empty)
   where
     dflags = hsc_dflags hsc_env
 
