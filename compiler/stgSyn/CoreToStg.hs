@@ -225,7 +225,7 @@ import Control.Monad (ap)
 coreToStg :: DynFlags -> Module -> CoreProgram
           -> ([StgTopBinding], CollectedCCs)
 coreToStg dflags this_mod pgm
-  = (pgm', final_ccs)
+  = (pgm', emptyCollectedCCs)
   where
     (_, (local_ccs, local_cc_stacks), pgm')
       = coreTopBindsToStg dflags this_mod emptyVarEnv emptyCollectedCCs pgm
