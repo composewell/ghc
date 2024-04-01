@@ -17,7 +17,7 @@
 #include "Arena.h"
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 #define PROFILING_ONLY(s) s
 #else
 #define PROFILING_ONLY(s) doNothing()
@@ -39,7 +39,7 @@ typedef struct {
     unsigned int total_prof_ticks;
 } ProfilerTotals;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 void reportCCSProfiling ( void );
 

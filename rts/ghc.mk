@@ -577,8 +577,8 @@ rts_dist_CMM_FILES = $(rts_dist_CMM_SRCS)
 # a different set of dependencies for each way.  Further hack: PROFILING an
 
 # TICKY_TICKY can't be used together, so we omit TICKY_TICKY for now.
-#rts_dist_MKDEPENDC_OPTS += -DGC_PROFILING -DTHREADED_RTS -DDEBUG
-rts_dist_MKDEPENDC_OPTS += -DPROFILING -DTHREADED_RTS -DDEBUG
+rts_dist_MKDEPENDC_OPTS += -DGC_PROFILING -DTHREADED_RTS -DDEBUG
+#rts_dist_MKDEPENDC_OPTS += -DPROFILING -DTHREADED_RTS -DDEBUG
 
 ifeq "$(USE_DTRACE)" "YES"
 

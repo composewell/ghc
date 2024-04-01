@@ -28,7 +28,7 @@ module GHC.Exts.Heap.Closures (
 
 import Prelude -- See note [Why do we import Prelude here?]
 import GHC.Exts.Heap.Constants
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 import GHC.Exts.Heap.InfoTableProf
 #else
 import GHC.Exts.Heap.InfoTable

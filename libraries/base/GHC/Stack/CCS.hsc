@@ -45,7 +45,6 @@ import GHC.Foreign as GHC
 import GHC.IO.Encoding
 import GHC.List ( concatMap, reverse )
 
-#define PROFILING
 #define GC_PROFILING
 #include "Rts.h"
 

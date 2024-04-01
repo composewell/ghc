@@ -516,7 +516,7 @@ INLINE_HEADER StgWord8 *mutArrPtrsCard (StgMutArrPtrs *a, W_ n)
 
    -------------------------------------------------------------------------- */
 
-#if defined(PROFILING)
+#if defined(X_PROFILING)
 #define ZERO_SLOP_FOR_LDV_PROF 1
 #else
 #define ZERO_SLOP_FOR_LDV_PROF 0

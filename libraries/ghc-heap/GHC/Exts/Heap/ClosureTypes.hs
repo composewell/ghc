@@ -97,7 +97,10 @@ closureTypeHeaderSize closType =
     thunkHeader = 2 + prof
 -- XXX This is compiled with PROFILING flag and not GC_PROFILING, so we need to
 -- be careful to change this if we change the header.
-#if defined(PROFILING)
+#ifndef GC_PROFILING
+#warning "GC_PROFILING not defined"
+#endif
+#if defined(GC_PROFILING)
     prof = 2
 #else
     prof = 0

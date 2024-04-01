@@ -86,8 +86,7 @@ void startProfTimer     ( void );
  * The rest is PROFILING only...
  * ---------------------------------------------------------------------------*/
 
-// if defined(GC_PROFILING)
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 /* -----------------------------------------------------------------------------
  * Constants
@@ -216,14 +215,12 @@ extern CostCentre * RTS_VAR(CC_LIST);               // registered CC list
  * ---------------------------------------------------------------------------*/
 
 /* eliminate profiling overhead from allocation costs */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 #define CCS_ALLOC(ccs, amount) doNothing()
 #define ENTER_CCS_THUNK(cap,p) doNothing()
-// define CCS_ALLOC(ccs, size) (ccs)->mem_alloc += ((size)-sizeofW(StgProfHeader))
-//#define ENTER_CCS_THUNK(cap,p) cap->r.rCCCS = p->header.prof.ccs
 #else
-#define CCS_ALLOC(ccs, amount) doNothing()
-#define ENTER_CCS_THUNK(cap,p) doNothing()
+//#define CCS_ALLOC(ccs, size) (ccs)->mem_alloc += ((size)-sizeofW(StgProfHeader))
+//#define ENTER_CCS_THUNK(cap,p) cap->r.rCCCS = p->header.prof.ccs
 #endif
 
 #else /* !PROFILING */

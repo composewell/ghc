@@ -181,7 +181,7 @@ typedef struct StgInfoTable_ {
 #endif
 
     // XXX Need to use this for info about the closure
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     StgProfInfo     prof;
 #endif
 

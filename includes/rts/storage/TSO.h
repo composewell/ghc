@@ -178,7 +178,7 @@ typedef struct StgTSO_ {
 #endif
     // XXX Can be removed but will require recompiling due to changes in
     // deriveConstant
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     StgTSOProfInfo prof;
 #endif
 #if defined(mingw32_HOST_OS)

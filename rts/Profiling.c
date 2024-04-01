@@ -6,8 +6,7 @@
  *
  * ---------------------------------------------------------------------------*/
 
-// if defined(GC_PROFILING)
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 #include "PosixSource.h"
 #include "Rts.h"
@@ -105,7 +104,7 @@ CCS_DECLARE(CCS_IDLE,       CC_IDLE,       );
 
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 // Required by utils/iserv
 void registerCcList(CostCentre **cc_list)
 {

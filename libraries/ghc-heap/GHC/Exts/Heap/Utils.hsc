@@ -85,7 +85,7 @@ dataConNames ptr = do
       where
         size_fixed = 2  -- layout, type
 -- XXX May have to change this
-##if defined(PROFILING)
+##if defined(GC_PROFILING)
         size_prof = 2
 ##else
         size_prof = 0

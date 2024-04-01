@@ -16,7 +16,7 @@ void        endHeapProfiling   (void);
 void        freeHeapProfiling  (void);
 bool        strMatchesSelector (const char* str, const char* sel);
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 // doingRetainerProfiling: `-hr` or `-hr<cc> -h<x>`
 bool doingRetainerProfiling(void);
 #endif

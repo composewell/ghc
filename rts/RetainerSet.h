@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 #include "BeginPrivate.h"
 

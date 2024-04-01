@@ -730,7 +730,6 @@ getWanted verbose os tmpdir gccProgram gccFlags nmProgram mobjdumpProgram
                      " */",
                      "",
                      "#define GC_PROFILING",
-                     "#define PROFILING",
                      "#define THREADED_RTS",
                      "",
                      "#include \"PosixSource.h\"",

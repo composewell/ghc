@@ -9,9 +9,7 @@
 
 #pragma once
 
-// undef PROFILING
-
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 #include <rts/Types.h>
 #include "RetainerSet.h"
