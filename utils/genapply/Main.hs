@@ -266,7 +266,8 @@ stackCheck regstatus args args_in_regs fun_info_label (prof_sp, norm_sp) =
           char '}'
        | otherwise = empty
   in
-  vcat [ text "#if defined(PROFILING)",
+  -- XXX We have changed the flag so this will be ineffective
+  vcat [ text "#if defined(XXX_PROFILING)",
          cmp_sp prof_sp,
          text "#else",
          cmp_sp norm_sp,
@@ -401,7 +402,11 @@ genMkPAP regstatus macro jump live ticker disamb
 
         shuffle_extra_args = (doc, (shuffle_prof_stack, shuffle_norm_stack))
           where
-           doc = vcat [ text "#if defined(PROFILING)",
+           -- XXX Profiling specific stuff
+           -- XXX We have changed the flag to GC_PROFILING so this will be
+           -- ineffective.
+           -- XXX Is PROFILING getting et here somehow?
+           doc = vcat [ text "#if defined(XXX_PROFILING)",
                         shuffle_prof_doc,
                         text "#else",
                         shuffle_norm_doc,

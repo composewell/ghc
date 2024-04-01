@@ -8,6 +8,8 @@
 
 #pragma once
 
+#undef PROFILING
+
 // Build a new PAP: function is in R1
 // ret addr and m arguments taking up n words are on the stack.
 // NB. x is a dummy argument attached to the 'for' label so that

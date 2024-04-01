@@ -12,6 +12,8 @@
 
 #include "Cmm.h"
 
+#undef PROFILING
+
 /* ----------------------------------------------------------------------------
  * Evaluate a closure and return it.
  *
@@ -133,7 +135,7 @@ again:
                 P_ pap;
                 pap = Hp - size + WDS(1);
                 // We'll lose the original PAP, so we should enter its CCS
-                ccall enterFunCCS(BaseReg "ptr", StgHeader_ccs(untaggedfun) "ptr");
+                // ccall enterFunCCS(BaseReg "ptr", StgHeader_ccs(untaggedfun) "ptr");
                 SET_HDR(pap, stg_PAP_info, CCCS);
                 StgPAP_arity(pap) = StgPAP_arity(untaggedfun);
                 StgPAP_n_args(pap) = StgPAP_n_args(untaggedfun);
@@ -242,7 +244,7 @@ stg_PAP_apply /* no args => explicit stack */
   TICK_ENT_PAP();
   LDV_ENTER(pap);
 #if defined(PROFILING)
-  ccall enterFunCCS(BaseReg "ptr", StgHeader_ccs(pap) "ptr");
+  // ccall enterFunCCS(BaseReg "ptr", StgHeader_ccs(pap) "ptr");
 #endif
 
   // Reload the stack

@@ -6,6 +6,7 @@
  *
  * ---------------------------------------------------------------------------*/
 
+#undef PROFILING
 #if defined(PROFILING)
 
 #include "PosixSource.h"

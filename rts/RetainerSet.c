@@ -7,6 +7,8 @@
  *
  * ---------------------------------------------------------------------------*/
 
+#undef PROFILING
+
 #if defined(PROFILING)
 
 #include "PosixSource.h"
@@ -47,6 +49,9 @@ RetainerSet rs_MANY = {
     .id      = 1,
     .element = {}
 };
+#endif
+
+#ifdef PROFILING
 
 /* -----------------------------------------------------------------------------
  * calculate the size of a RetainerSet structure

@@ -12,6 +12,8 @@
 
 #include "Cmm.h"
 
+#undef PROFILING
+
 import pthread_mutex_lock;
 import ghczmprim_GHCziTypes_Czh_info;
 import ghczmprim_GHCziTypes_Izh_info;

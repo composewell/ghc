@@ -64,6 +64,7 @@ typedef struct {
 
 typedef struct {
     const StgInfoTable* info;
+// if defined(GC_PROFILING)
 #if defined(PROFILING)
     StgProfHeader         prof;
 #endif
@@ -71,6 +72,7 @@ typedef struct {
 
 typedef struct {
     const StgInfoTable* info;
+// if defined(GC_PROFILING)
 #if defined(PROFILING)
     StgProfHeader         prof;
 #endif

@@ -6,6 +6,8 @@
  *
  * ---------------------------------------------------------------------------*/
 
+#undef PROFILING
+
 /*
  * The interval timer is used for profiling and for context switching in the
  * threaded build.

@@ -13,7 +13,7 @@
 
 #pragma once
 
-#if defined(PROFILING)
+#if defined(X_PROFILING)
 
 /* retrieves the LDV word from closure c */
 #define LDVW(c)                 (((StgClosure *)(c))->header.prof.hp.ldvw)

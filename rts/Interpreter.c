@@ -4,6 +4,8 @@
  * Copyright (c) The GHC Team, 1994-2002.
  * ---------------------------------------------------------------------------*/
 
+#undef PROFILING
+
 #include "PosixSource.h"
 #include "Rts.h"
 #include "RtsAPI.h"

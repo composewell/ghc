@@ -6,6 +6,8 @@
  *
  * ---------------------------------------------------------------------------*/
 
+#undef PROFILING
+
 #include "Rts.h"
 #include "RtsAPI.h"
 #include "HsFFI.h"

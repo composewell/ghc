@@ -6,6 +6,8 @@
  *
  * --------------------------------------------------------------------------*/
 
+#undef PROFILING
+
 #include "PosixSource.h"
 #include "Rts.h"
 
@@ -25,6 +27,11 @@
 
 #include <fs_rts.h>
 #include <string.h>
+
+void
+LDV_recordDead( const StgClosure *c, uint32_t size )
+{
+}
 
 FILE *hp_file;
 static char *hp_filename; /* heap profile (hp2ps style) log file */

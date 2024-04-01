@@ -119,7 +119,7 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
    Macros for building closures
    -------------------------------------------------------------------------- */
 
-#if defined(PROFILING)
+#if defined(X_PROFILING)
 /*
   The following macro works for both retainer profiling and LDV profiling. For
  retainer profiling, 'era' remains 0, so by setting the 'ldvw' field we also set
@@ -134,8 +134,12 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
  [1]: Technically we should set 'rs' to `NULL | flip`.
  */
 #define SET_PROF_HDR(c,ccs_)            \
+        ((c)->header.prof.ccs = ccs_)
+
+         /*
         ((c)->header.prof.ccs = ccs_,   \
         LDV_RECORD_CREATE((c)))
+        */
 #else
 #define SET_PROF_HDR(c,ccs)
 #endif
@@ -159,8 +163,9 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
 // Use when changing a closure from one kind to another
 #define OVERWRITE_INFO(c, new_info)                             \
     OVERWRITING_CLOSURE((StgClosure *)(c));                     \
-    SET_INFO((StgClosure *)(c), (new_info));                    \
-    LDV_RECORD_CREATE(c);
+    SET_INFO((StgClosure *)(c), (new_info));
+
+    /*LDV_RECORD_CREATE(c);*/
 
 /* -----------------------------------------------------------------------------
    How to get hold of the static link field for a static closure.
@@ -531,7 +536,7 @@ INLINE_HEADER StgWord8 *mutArrPtrsCard (StgMutArrPtrs *a, W_ n)
 #define OVERWRITING_CLOSURE_OFS(c,n) /* nothing */
 #endif
 
-#if defined(PROFILING)
+#if defined(X_PROFILING)
 void LDV_recordDead (const StgClosure *c, uint32_t size);
 #endif
 
@@ -542,13 +547,15 @@ EXTERN_INLINE void overwritingClosure_ (StgClosure *p,
                                         );
 EXTERN_INLINE void overwritingClosure_ (StgClosure *p, uint32_t offset, uint32_t size, bool prim USED_IF_PROFILING)
 {
+#if defined(X_PROFILING)
 #if ZERO_SLOP_FOR_LDV_PROF && !ZERO_SLOP_FOR_SANITY_CHECK
     // see Note [zeroing slop], also #8402
     if (era <= 0) return;
 #endif
+#endif
 
     // For LDV profiling, we need to record the closure as dead
-#if defined(PROFILING)
+#if defined(X_PROFILING)
     if (!prim) { LDV_recordDead(p, size); };
 #endif
 

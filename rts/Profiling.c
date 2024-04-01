@@ -6,6 +6,7 @@
  *
  * ---------------------------------------------------------------------------*/
 
+// if defined(GC_PROFILING)
 #if defined(PROFILING)
 
 #include "PosixSource.h"
@@ -101,6 +102,22 @@ CCS_DECLARE(CCS_OVERHEAD,   CC_OVERHEAD,   );
 CCS_DECLARE(CCS_DONT_CARE,  CC_DONT_CARE,  );
 CCS_DECLARE(CCS_PINNED,     CC_PINNED,     );
 CCS_DECLARE(CCS_IDLE,       CC_IDLE,       );
+
+#endif
+
+#if defined(PROFILING)
+// Required by utils/iserv
+void registerCcList(CostCentre **cc_list)
+{
+}
+
+void registerCcsList(CostCentreStack **cc_list)
+{
+}
+#endif
+
+#undef PROFILING
+#if defined(PROFILING)
 
 /*
  * Static Functions

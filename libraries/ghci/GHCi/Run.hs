@@ -340,6 +340,7 @@ mkString0 bs = B.unsafeUseAsCStringLen bs $ \(cstr,len) -> do
   pokeElemOff (ptr :: Ptr CChar) len 0
   return (castRemotePtr (toRemotePtr ptr))
 
+#undef PROFILING
 mkCostCentres :: String -> [(String,String)] -> IO [RemotePtr CostCentre]
 #if defined(PROFILING)
 mkCostCentres mod ccs = do

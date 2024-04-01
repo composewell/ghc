@@ -95,6 +95,8 @@ closureTypeHeaderSize closType =
   where
     header = 1 + prof
     thunkHeader = 2 + prof
+-- XXX This is compiled with PROFILING flag and not GC_PROFILING, so we need to
+-- be careful to change this if we change the header.
 #if defined(PROFILING)
     prof = 2
 #else

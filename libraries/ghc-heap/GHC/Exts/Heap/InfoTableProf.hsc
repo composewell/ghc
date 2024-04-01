@@ -8,7 +8,9 @@ module GHC.Exts.Heap.InfoTableProf
 -- This file overrides InfoTable.hsc's implementation of peekItbl and pokeItbl.
 -- Manually defining PROFILING gives the #peek and #poke macros an accurate
 -- representation of StgInfoTable_ when hsc2hs runs.
+-- XXX May have to change this
 #define PROFILING
+#define GC_PROFILING
 #include "Rts.h"
 
 import Prelude -- See note [Why do we import Prelude here?]

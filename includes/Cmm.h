@@ -263,7 +263,7 @@
    Indirections can contain tagged pointers, so their tag is checked.
    -------------------------------------------------------------------------- */
 
-#if defined(PROFILING)
+#if defined(X_PROFILING)
 
 // When profiling, we cannot shortcut ENTER() by checking the tag,
 // because LDV profiling relies on entering closures to mark them as
@@ -294,7 +294,7 @@
 //    explicit jumps, for use when we are doing the stack management
 //    ourselves.
 
-#if defined(PROFILING)
+#if defined(X_PROFILING)
 // See Note [Evaluating functions with profiling] in rts/Apply.cmm
 #define ENTER(x) jump stg_ap_0_fast(x);
 #else
@@ -623,7 +623,7 @@
 #define mutArrPtrCardUp(i)   (((i) + mutArrCardMask) >> MUT_ARR_PTRS_CARD_BITS)
 #define mutArrPtrsCardWords(n) ROUNDUP_BYTES_TO_WDS(mutArrPtrCardUp(n))
 
-#if defined(PROFILING) || (!defined(THREADED_RTS) && defined(DEBUG))
+#if defined(X_PROFILING) || (!defined(THREADED_RTS) && defined(DEBUG))
 #define OVERWRITING_CLOSURE_SIZE(c, size) foreign "C" overwritingClosureSize(c "ptr", size)
 #define OVERWRITING_CLOSURE(c) foreign "C" overwritingClosure(c "ptr")
 #define OVERWRITING_CLOSURE_OFS(c,n) foreign "C" overwritingClosureOfs(c "ptr", n)

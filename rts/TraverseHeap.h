@@ -9,6 +9,8 @@
 
 #pragma once
 
+// undef PROFILING
+
 #if defined(PROFILING)
 
 #include <rts/Types.h>

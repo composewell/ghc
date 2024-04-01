@@ -176,6 +176,8 @@ typedef struct StgTSO_ {
 #if defined(TICKY_TICKY)
     /* TICKY-specific stuff would go here. */
 #endif
+    // XXX Can be removed but will require recompiling due to changes in
+    // deriveConstant
 #if defined(PROFILING)
     StgTSOProfInfo prof;
 #endif

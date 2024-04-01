@@ -46,6 +46,7 @@ import GHC.IO.Encoding
 import GHC.List ( concatMap, reverse )
 
 #define PROFILING
+#define GC_PROFILING
 #include "Rts.h"
 
 -- | A cost-centre stack from GHC's cost-center profiler.

@@ -6,6 +6,8 @@
  *
  * ---------------------------------------------------------------------------*/
 
+#undef PROFILING
+
 #include "PosixSource.h"
 #include "Rts.h"
 #include "RtsAPI.h"

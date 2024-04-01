@@ -301,6 +301,8 @@ wanteds os = concat
            -- derivedConstant works as expected
            constantWord Both "CONTROL_GROUP_CONST_291" "0x123"
            -- Closure header sizes.
+
+           -- XXX Profiling specific
           ,constantWord Both "STD_HDR_SIZE"
                              -- grrr.. PROFILING is on so we need to
                              -- subtract sizeofW(StgProfHeader)
@@ -727,6 +729,7 @@ getWanted verbose os tmpdir gccProgram gccFlags nmProgram mobjdumpProgram
                      " * affect the offsets of anything else.",
                      " */",
                      "",
+                     "#define GC_PROFILING",
                      "#define PROFILING",
                      "#define THREADED_RTS",
                      "",
