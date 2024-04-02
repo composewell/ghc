@@ -119,7 +119,7 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
    Macros for building closures
    -------------------------------------------------------------------------- */
 
-#if defined(X_PROFILING)
+#if defined(PROFILING)
 /*
   The following macro works for both retainer profiling and LDV profiling. For
  retainer profiling, 'era' remains 0, so by setting the 'ldvw' field we also set
@@ -134,12 +134,8 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
  [1]: Technically we should set 'rs' to `NULL | flip`.
  */
 #define SET_PROF_HDR(c,ccs_)            \
-        ((c)->header.prof.ccs = ccs_)
-
-         /*
         ((c)->header.prof.ccs = ccs_,   \
         LDV_RECORD_CREATE((c)))
-        */
 #else
 #define SET_PROF_HDR(c,ccs)
 #endif
@@ -516,7 +512,7 @@ INLINE_HEADER StgWord8 *mutArrPtrsCard (StgMutArrPtrs *a, W_ n)
 
    -------------------------------------------------------------------------- */
 
-#if defined(X_PROFILING)
+#if defined(PROFILING)
 #define ZERO_SLOP_FOR_LDV_PROF 1
 #else
 #define ZERO_SLOP_FOR_LDV_PROF 0
@@ -536,7 +532,7 @@ INLINE_HEADER StgWord8 *mutArrPtrsCard (StgMutArrPtrs *a, W_ n)
 #define OVERWRITING_CLOSURE_OFS(c,n) /* nothing */
 #endif
 
-#if defined(X_PROFILING)
+#if defined(PROFILING)
 void LDV_recordDead (const StgClosure *c, uint32_t size);
 #endif
 
@@ -547,7 +543,7 @@ EXTERN_INLINE void overwritingClosure_ (StgClosure *p,
                                         );
 EXTERN_INLINE void overwritingClosure_ (StgClosure *p, uint32_t offset, uint32_t size, bool prim USED_IF_PROFILING)
 {
-#if defined(X_PROFILING)
+#if !defined(GC_PROFILING)
 #if ZERO_SLOP_FOR_LDV_PROF && !ZERO_SLOP_FOR_SANITY_CHECK
     // see Note [zeroing slop], also #8402
     if (era <= 0) return;
@@ -555,7 +551,7 @@ EXTERN_INLINE void overwritingClosure_ (StgClosure *p, uint32_t offset, uint32_t
 #endif
 
     // For LDV profiling, we need to record the closure as dead
-#if defined(X_PROFILING)
+#if defined(PROFILING)
     if (!prim) { LDV_recordDead(p, size); };
 #endif
 

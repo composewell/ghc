@@ -27,7 +27,7 @@
 #endif
 
 /* DEBUG and PROFILING both imply TRACING */
-#if defined(DEBUG) || defined(X_PROFILING)
+#if defined(DEBUG) || defined(PROFILING)
 #if !defined(TRACING)
 #define TRACING
 #endif

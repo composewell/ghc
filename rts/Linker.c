@@ -6,8 +6,6 @@
  *
  * ---------------------------------------------------------------------------*/
 
-#undef PROFILING
-
 #if 0
 #include "PosixSource.h"
 #endif
@@ -81,7 +79,6 @@
 #if defined(dragonfly_HOST_OS)
 #include <sys/tls.h>
 #endif
-
 /*
    Note [runtime-linker-support]
    -----------------------------

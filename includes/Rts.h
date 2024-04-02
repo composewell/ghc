@@ -157,7 +157,7 @@ void _assertFail(const char *filename, unsigned int linenum)
 #define USED_IF_NOT_THREADS
 #endif
 
-#if defined(X_PROFILING)
+#if defined(PROFILING)
 #define USED_IF_PROFILING
 #define USED_IF_NOT_PROFILING STG_UNUSED
 #else

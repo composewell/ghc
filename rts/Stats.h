@@ -14,8 +14,6 @@
 
 #include "BeginPrivate.h"
 
-#undef PROFILING
-
 #if defined(mingw32_HOST_OS)
 /* On Win64, if we say "printf" then gcc thinks we are going to use
    MS format specifiers like %I64d rather than %llu */

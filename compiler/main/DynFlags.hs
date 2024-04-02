@@ -1822,7 +1822,6 @@ wayOptc platform WayThreaded = case platformOS platform of
 wayOptc _ WayDebug      = []
 wayOptc _ WayDyn        = []
 wayOptc _ WayProf       = ["-DGC_PROFILING"]
--- wayOptc _ WayProf       = ["-DPROFILING"]
 wayOptc _ WayEventLog   = ["-DTRACING"]
 
 wayOptl :: Platform -> Way -> [String]
@@ -1846,7 +1845,6 @@ wayOptP _ WayThreaded = []
 wayOptP _ WayDebug    = []
 wayOptP _ WayDyn      = []
 wayOptP _ WayProf     = ["-DGC_PROFILING"]
--- wayOptP _ WayProf     = ["-DPROFILING"]
 wayOptP _ WayEventLog = ["-DTRACING"]
 
 whenGeneratingDynamicToo :: MonadIO m => DynFlags -> m () -> m ()

@@ -7,8 +7,6 @@
  *
  * ---------------------------------------------------------------------------*/
 
-#undef PROFILING
-
 #include "PosixSource.h"
 #include "ghcconfig.h"
 

@@ -84,7 +84,6 @@ dataConNames ptr = do
       = size_fixed + size_prof
       where
         size_fixed = 2  -- layout, type
--- XXX May have to change this
 ##if defined(GC_PROFILING)
         size_prof = 2
 ##else

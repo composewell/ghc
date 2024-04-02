@@ -31,8 +31,6 @@
 #include <sys/resource.h>
 #include <sys/times.h>
 
-#undef PROFILING
-
 #undef LINUX_PERF_EVENTS
 
 bool eventlog_enabled;

@@ -180,7 +180,6 @@ typedef struct StgInfoTable_ {
     StgFunPtr       entry;      /* pointer to the entry code */
 #endif
 
-    // XXX Need to use this for info about the closure
 #if defined(GC_PROFILING)
     StgProfInfo     prof;
 #endif

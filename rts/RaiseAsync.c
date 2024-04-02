@@ -23,8 +23,6 @@
 #include "win32/IOManager.h"
 #endif
 
-#undef PROFILING
-
 static void blockedThrowTo (Capability *cap,
                             StgTSO *target, MessageThrowTo *msg);
 

@@ -12,8 +12,6 @@
 
 #include "Cmm.h"
 
-#undef PROFILING
-
 /* ----------------------------------------------------------------------------
  * Evaluate a closure and return it.
  *
@@ -244,7 +242,7 @@ stg_PAP_apply /* no args => explicit stack */
   TICK_ENT_PAP();
   LDV_ENTER(pap);
 #if defined(PROFILING)
-  // ccall enterFunCCS(BaseReg "ptr", StgHeader_ccs(pap) "ptr");
+  ccall enterFunCCS(BaseReg "ptr", StgHeader_ccs(pap) "ptr");
 #endif
 
   // Reload the stack

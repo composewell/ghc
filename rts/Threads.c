@@ -113,7 +113,6 @@ createThread(Capability *cap, W_ size)
 
     tso->trec = NO_TREC;
 
-#undef PROFILING
 #if defined(PROFILING)
     tso->prof.cccs = CCS_MAIN;
 #endif

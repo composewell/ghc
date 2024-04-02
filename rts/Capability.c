@@ -35,8 +35,6 @@
 
 #include <string.h>
 
-#undef PROFILING
-
 // one global capability, this is the Capability for non-threaded
 // builds, and for +RTS -N1
 Capability MainCapability;

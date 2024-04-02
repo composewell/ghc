@@ -6,8 +6,6 @@
  *
  * ---------------------------------------------------------------------------*/
 
-#undef PROFILING
-
 #include "ghcplatform.h"
 #include "RtsSymbols.h"
 

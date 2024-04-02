@@ -115,9 +115,7 @@ void registerCcsList(CostCentreStack **cc_list)
 }
 #endif
 
-#undef PROFILING
 #if defined(PROFILING)
-
 /*
  * Static Functions
  */

@@ -27,8 +27,6 @@
    matching.
    -------------------------------------------------------------------------- */
 
-#undef PROFILING
-
 #if defined(PROFILING)
 #define SAVE_CCS        W_ saved_ccs; saved_ccs = CCCS;
 #define RESTORE_CCS     CCCS = saved_ccs;

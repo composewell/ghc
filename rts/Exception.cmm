@@ -13,8 +13,6 @@
 #include "Cmm.h"
 #include "RaiseAsync.h"
 
-#undef PROFILING
-
 import CLOSURE ghczmprim_GHCziTypes_True_closure;
 
 /* -----------------------------------------------------------------------------

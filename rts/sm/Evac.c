@@ -36,8 +36,6 @@
 #define HEAP_ALLOCED_GC(p) HEAP_ALLOCED(p)
 #endif
 
-#undef PROFILING
-
 #if !defined(PARALLEL_GC) || defined(PROFILING)
 #define copy_tag_nolock(p, info, src, size, stp, tag) \
         copy_tag(p, info, src, size, stp, tag)
