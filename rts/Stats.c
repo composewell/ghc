@@ -541,6 +541,9 @@ stat_endGC (Capability *cap, gc_thread *initiating_gct, W_ live, W_ copied, W_ s
     // Update the cumulative stats
 
     stats.gcs++;
+#ifdef GC_PROFILING
+    era++;
+#endif
     stats.allocated_bytes = tot_alloc_bytes;
     stats.max_mem_in_use_bytes = peak_mblocks_allocated * MBLOCK_SIZE;
 
