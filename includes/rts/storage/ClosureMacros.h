@@ -8,6 +8,11 @@
 
 #pragma once
 
+#if defined(PROFILING)
+#define GC_PROFILING
+#undef PROFILING
+#endif
+
 /* -----------------------------------------------------------------------------
    Info tables are slammed up against the entry code, and the label
    for the info table is at the *end* of the table itself.  This
@@ -119,11 +124,13 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
    Macros for building closures
    -------------------------------------------------------------------------- */
 
-#if defined(X_PROFILING)
+#if defined(GC_PROFILING)
 /*
   The following macro works for both retainer profiling and LDV profiling. For
  retainer profiling, 'era' remains 0, so by setting the 'ldvw' field we also set
  'rs' to zero.
+
+ XXX we depend on correct flip bit?
 
  Note that we don't have to bother handling the 'flip' bit properly[1] since the
  retainer profiling code will just set 'rs' to NULL upon visiting a closure with
@@ -136,10 +143,7 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
 #define SET_PROF_HDR(c,ccs_)            \
         ((c)->header.prof.ccs = ccs_)
 
-         /*
-        ((c)->header.prof.ccs = ccs_,   \
-        LDV_RECORD_CREATE((c)))
-        */
+        /* LDV_RECORD_CREATE((c))) */
 #else
 #define SET_PROF_HDR(c,ccs)
 #endif
@@ -536,7 +540,7 @@ INLINE_HEADER StgWord8 *mutArrPtrsCard (StgMutArrPtrs *a, W_ n)
 #define OVERWRITING_CLOSURE_OFS(c,n) /* nothing */
 #endif
 
-#if defined(X_PROFILING)
+#if defined(GC_PROFILING)
 void LDV_recordDead (const StgClosure *c, uint32_t size);
 #endif
 
@@ -547,7 +551,7 @@ EXTERN_INLINE void overwritingClosure_ (StgClosure *p,
                                         );
 EXTERN_INLINE void overwritingClosure_ (StgClosure *p, uint32_t offset, uint32_t size, bool prim USED_IF_PROFILING)
 {
-#if defined(X_PROFILING)
+#if !defined(GC_PROFILING)
 #if ZERO_SLOP_FOR_LDV_PROF && !ZERO_SLOP_FOR_SANITY_CHECK
     // see Note [zeroing slop], also #8402
     if (era <= 0) return;
@@ -555,7 +559,7 @@ EXTERN_INLINE void overwritingClosure_ (StgClosure *p, uint32_t offset, uint32_t
 #endif
 
     // For LDV profiling, we need to record the closure as dead
-#if defined(X_PROFILING)
+#if defined(PROFILING)
     if (!prim) { LDV_recordDead(p, size); };
 #endif
 

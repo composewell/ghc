@@ -6,8 +6,12 @@
  *
  * ---------------------------------------------------------------------------*/
 
-// if defined(GC_PROFILING)
 #if defined(PROFILING)
+#define GC_PROFILING
+#undef PROFILING
+#endif
+
+#if defined(GC_PROFILING)
 
 #include "PosixSource.h"
 #include "Rts.h"
@@ -103,22 +107,6 @@ CCS_DECLARE(CCS_DONT_CARE,  CC_DONT_CARE,  );
 CCS_DECLARE(CCS_PINNED,     CC_PINNED,     );
 CCS_DECLARE(CCS_IDLE,       CC_IDLE,       );
 
-#endif
-
-#if defined(PROFILING)
-// Required by utils/iserv
-void registerCcList(CostCentre **cc_list)
-{
-}
-
-void registerCcsList(CostCentreStack **cc_list)
-{
-}
-#endif
-
-#undef PROFILING
-#if defined(PROFILING)
-
 /*
  * Static Functions
  */
@@ -149,6 +137,7 @@ static  void              initProfilingLogFile ( void );
    Initialise the profiling environment
    -------------------------------------------------------------------------- */
 
+/*
 static void
 dumpCostCentresToEventLog(void)
 {
@@ -161,22 +150,26 @@ dumpCostCentresToEventLog(void)
     }
 #endif
 }
+*/
 
+// We are using this mainly for prof_file initialization because it is beign
+// used by retainer profiling to dump some info.
 void initProfiling (void)
 {
     // initialise our arena
+    // XXX can remove it, what is this for?
     prof_arena = newArena();
 
     /* for the benefit of allocate()... */
     {
         uint32_t n;
         for (n=0; n < n_capabilities; n++) {
-            capabilities[n]->r.rCCCS = CCS_SYSTEM;
+            capabilities[n]->r.rCCCS = -1;
         }
     }
 
 #if defined(THREADED_RTS)
-    initMutex(&ccs_mutex);
+    //initMutex(&ccs_mutex);
 #endif
 
     /* Set up the log file, and dump the header and cost centre
@@ -184,6 +177,7 @@ void initProfiling (void)
      */
     initProfilingLogFile();
 
+#if 0
     /* Register all the cost centres / stacks in the program
      * CC_MAIN gets link = 0, all others have non-zero link.
      */
@@ -219,6 +213,7 @@ void initProfiling (void)
     }
 
     dumpCostCentresToEventLog();
+#endif
 }
 
 
@@ -226,6 +221,7 @@ void initProfiling (void)
 //
 // Should be called after loading any new Haskell code.
 //
+/*
 void refreshProfilingCCSs (void)
 {
     // make CCS_MAIN the parent of all the pre-defined CCSs.
@@ -239,6 +235,7 @@ void refreshProfilingCCSs (void)
     }
     CCS_LIST = NULL;
 }
+*/
 
 void
 freeProfiling (void)
@@ -246,6 +243,7 @@ freeProfiling (void)
     arenaFree(prof_arena);
 }
 
+/*
 CostCentre *mkCostCentre (char *label, char *module, char *srcloc)
 {
     CostCentre *cc = stgMallocBytes (sizeof(CostCentre), "mkCostCentre");
@@ -258,6 +256,7 @@ CostCentre *mkCostCentre (char *label, char *module, char *srcloc)
     cc->link = NULL;
     return cc;
 }
+*/
 
 static void
 initProfilingLogFile(void)
@@ -369,6 +368,7 @@ void registerCcsList(CostCentreStack **cc_list)
     }
 }
 
+#if 0
 /* -----------------------------------------------------------------------------
    Set CCCS when entering a function.
 
@@ -749,11 +749,13 @@ reportCCSProfiling( void )
     CostCentreStack *stack = pruneCCSTree(CCS_MAIN);
     sortCCSTree(stack);
 
+    /*
     if (RtsFlags.CcFlags.doCostCentres == COST_CENTRES_JSON) {
         writeCCSReportJson(prof_file, stack, totals);
     } else {
         writeCCSReport(prof_file, stack, totals);
     }
+    */
 }
 
 /* -----------------------------------------------------------------------------
@@ -913,6 +915,7 @@ sortCCSTree(CostCentreStack *ccs)
 
     ccs->indexTable = sortedList;
 }
+#endif
 
 void
 fprintCCS( FILE *f, CostCentreStack *ccs )
@@ -1022,6 +1025,7 @@ done:
     return;
 }
 
+#if 0
 #if defined(DEBUG)
 void
 debugCCS( CostCentreStack *ccs )
@@ -1036,5 +1040,6 @@ debugCCS( CostCentreStack *ccs )
     debugBelch(">");
 }
 #endif /* DEBUG */
+#endif
 
 #endif /* PROFILING */

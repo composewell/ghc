@@ -10,6 +10,11 @@
 #pragma once
 
 #if defined(PROFILING)
+#define GC_PROFILING
+#undef PROFILING
+#endif
+
+#if defined(GC_PROFILING)
 
 #include "RetainerSet.h"
 #include "TraverseHeap.h"

@@ -8,6 +8,11 @@
 
 #pragma once
 
+#if defined(PROFILING)
+#define GC_PROFILING
+#undef PROFILING
+#endif
+
 /* ----------------------------------------------------------------------------
    Relative pointers
 
@@ -180,8 +185,7 @@ typedef struct StgInfoTable_ {
     StgFunPtr       entry;      /* pointer to the entry code */
 #endif
 
-    // XXX Need to use this for info about the closure
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     StgProfInfo     prof;
 #endif
 

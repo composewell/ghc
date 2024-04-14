@@ -52,7 +52,7 @@ void      stat_startRP(void);
 void      stat_endRP(uint32_t, int, double);
 #endif /* PROFILING */
 
-#if defined(PROFILING) || defined(DEBUG)
+#if defined(GC_PROFILING) || defined(DEBUG)
 void      stat_startHeapCensus(void);
 void      stat_endHeapCensus(void);
 #endif
@@ -121,5 +121,6 @@ typedef struct RTSSummaryStats_ {
 } RTSSummaryStats;
 
 StgWord64 getGCCPUStats(void);
+uint32_t getNumGcs(void);
 
 #include "EndPrivate.h"

@@ -7,7 +7,10 @@
  *
  * ---------------------------------------------------------------------------*/
 
+#if defined(PROFILING)
+#define GC_PROFILING
 #undef PROFILING
+#endif
 
 #include "PosixSource.h"
 #include "Rts.h"
@@ -106,7 +109,7 @@ static void bad_option (const char *s);
 static void read_debug_flags(const char *arg);
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 static bool read_heap_profiling_flag(const char *arg);
 #endif
 
@@ -199,7 +202,7 @@ void initRtsFlagsDefaults(void)
     RtsFlags.DebugFlags.numa            = false;
     RtsFlags.DebugFlags.compact         = false;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     RtsFlags.CcFlags.doCostCentres      = COST_CENTRES_NONE;
     RtsFlags.CcFlags.outputFileNameStem = NULL;
 #endif /* PROFILING */
@@ -207,7 +210,7 @@ void initRtsFlagsDefaults(void)
     RtsFlags.ProfFlags.doHeapProfile      = false;
     RtsFlags.ProfFlags.heapProfileInterval = USToTime(100000); // 100ms
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     RtsFlags.ProfFlags.includeTSOs        = false;
     RtsFlags.ProfFlags.showCCSOnException = false;
     RtsFlags.ProfFlags.maxRetainerSetSize = 8;
@@ -840,7 +843,7 @@ errorBelch("the flag %s requires the program to be built with -ticky", \
 error = true;
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 # define PROFILING_BUILD_ONLY(x)   x
 #else
 # define PROFILING_BUILD_ONLY(x) \
@@ -1322,7 +1325,7 @@ error = true;
                       }
                   ) break;
               case 'h': /* serial heap profile */
-#if !defined(PROFILING)
+#if !defined(GC_PROFILING)
                 switch (rts_argv[arg][2]) {
                   case '\0':
                   case 'T':
@@ -2009,7 +2012,7 @@ static void read_debug_flags(const char* arg)
 }
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 // Parse a "-h" flag, returning whether the parse resulted in an error.
 static bool read_heap_profiling_flag(const char *arg)
 {
@@ -2049,6 +2052,7 @@ static bool read_heap_profiling_flag(const char *arg)
                 char *selector = stgStrndup(left, right - left + 1);
 
                 switch (arg[2]) {
+                  /*
                 case 'c': // cost centre label select
                     RtsFlags.ProfFlags.ccSelector = selector;
                     break;
@@ -2067,14 +2071,17 @@ static bool read_heap_profiling_flag(const char *arg)
                 case 'y': // closure type select
                     RtsFlags.ProfFlags.typeSelector = selector;
                     break;
+                    */
                 case 'R':
                 case 'r': // retainer select
                     RtsFlags.ProfFlags.retainerSelector = selector;
                     break;
+                    /*
                 case 'B':
                 case 'b': // biography select
                     RtsFlags.ProfFlags.bioSelector = selector;
                     break;
+                    */
                 default:
                     free(selector);
                 }
@@ -2089,6 +2096,7 @@ static bool read_heap_profiling_flag(const char *arg)
         }
 
         switch (arg[2]) {
+          /*
         case '\0':
         case 'C':
         case 'c':
@@ -2106,10 +2114,12 @@ static bool read_heap_profiling_flag(const char *arg)
         case 'y':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_TYPE;
             break;
+            */
         case 'R':
         case 'r':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_RETAINER;
             break;
+            /*
         case 'B':
         case 'b':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_LDV;
@@ -2117,6 +2127,7 @@ static bool read_heap_profiling_flag(const char *arg)
         case 'T':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_CLOSURE_TYPE;
             break;
+            */
         }
         break;
 

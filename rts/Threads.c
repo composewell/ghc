@@ -82,7 +82,10 @@ createThread(Capability *cap, W_ size)
     stack_size = round_to_mblocks(size - sizeofW(StgTSO));
     stack = (StgStack *)allocate(cap, stack_size);
     TICK_ALLOC_STACK(stack_size);
-    SET_HDR(stack, &stg_STACK_info, cap->r.rCCCS);
+    // XXX Search all places for stg_STACK_info
+    // XXX search all places where SET_HDR is called
+    uint32_t gcs = getNumGcs();
+    SET_HDR(stack, &stg_STACK_info, gcs);
     stack->stack_size   = stack_size - sizeofW(StgStack);
     stack->sp           = stack->stack + stack->stack_size;
     stack->dirty        = STACK_DIRTY;
@@ -90,7 +93,7 @@ createThread(Capability *cap, W_ size)
 
     tso = (StgTSO *)allocate(cap, sizeofW(StgTSO));
     TICK_ALLOC_TSO();
-    SET_HDR(tso, &stg_TSO_info, CCS_SYSTEM);
+    SET_HDR(tso, &stg_TSO_info, gcs);
 
     // Always start with the compiled code evaluator
     tso->what_next = ThreadRunGHC;
@@ -113,9 +116,13 @@ createThread(Capability *cap, W_ size)
 
     tso->trec = NO_TREC;
 
-#undef PROFILING
 #if defined(PROFILING)
-    tso->prof.cccs = CCS_MAIN;
+#define GC_PROFILING
+#undef PROFILING
+#endif
+
+#if defined(GC_PROFILING)
+    tso->prof.cccs = gcs;
 #endif
 
     tso->cur_sec = 0;

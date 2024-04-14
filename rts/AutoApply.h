@@ -6,6 +6,8 @@
  *
  * -------------------------------------------------------------------------- */
 
+// These are used in genapply util.
+
 #pragma once
 
 #undef PROFILING

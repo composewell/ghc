@@ -7,9 +7,12 @@
  *
  * ---------------------------------------------------------------------------*/
 
-#undef PROFILING
-
 #if defined(PROFILING)
+#define GC_PROFILING
+#undef PROFILING
+#endif
+
+#if defined(GC_PROFILING)
 
 #include "PosixSource.h"
 #include "Rts.h"
@@ -49,9 +52,6 @@ RetainerSet rs_MANY = {
     .id      = 1,
     .element = {}
 };
-#endif
-
-#ifdef PROFILING
 
 /* -----------------------------------------------------------------------------
  * calculate the size of a RetainerSet structure

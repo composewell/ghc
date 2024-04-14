@@ -320,8 +320,9 @@ initCapability (Capability *cap, uint32_t i)
     cap->pinned_object_block = NULL;
     cap->pinned_object_blocks = NULL;
 
-#if defined(PROFILING)
-    cap->r.rCCCS = CCS_SYSTEM;
+    // Initialize to -1 for error checking.
+#if defined(GC_PROFILING)
+    cap->r.rCCCS = -1;
 #else
     cap->r.rCCCS = NULL;
 #endif
@@ -606,8 +607,8 @@ releaseCapability_ (Capability* cap,
         }
     }
 
-#if defined(PROFILING)
-    cap->r.rCCCS = CCS_IDLE;
+#if defined(GC_PROFILING)
+    cap->r.rCCCS = -1;
 #endif
     RELAXED_STORE(&last_free_capability[cap->node], cap);
     debugTrace(DEBUG_sched, "freeing capability %d", cap->no);
@@ -909,8 +910,8 @@ void waitForCapability (Capability **pCap, Task *task)
         cap = waitForReturnCapability(task);
     }
 
-#if defined(PROFILING)
-    cap->r.rCCCS = CCS_SYSTEM;
+#if defined(GC_PROFILING)
+    cap->r.rCCCS = -1;
 #endif
 
     ASSERT_FULL_CAPABILITY_INVARIANTS(cap, task);
@@ -1015,8 +1016,8 @@ yieldCapability (Capability** pCap, Task *task, bool gcAllowed)
     debugTrace(DEBUG_sched, "resuming capability %d", cap->no);
     ASSERT(cap->running_task == task);
 
-#if defined(PROFILING)
-    cap->r.rCCCS = CCS_SYSTEM;
+#if defined(GC_PROFILING)
+    cap->r.rCCCS = -1;
 #endif
 
     *pCap = cap;
@@ -1295,7 +1296,10 @@ markCapability (evac_fn evac, void *user, Capability *cap,
     // are more, we mark every Capability whose number is the GC
     // thread's index plus a multiple of the number of GC threads.
     evac(user, (StgClosure **)(void *)&cap->run_queue_hd);
-    evac(user, (StgClosure **)(void *)&cap->run_queue_tl);
+    // XXX Don't we need to mark the entire queue?
+    if (cap->run_queue_hd != cap->run_queue_tl) {
+      evac(user, (StgClosure **)(void *)&cap->run_queue_tl);
+    }
 #if defined(THREADED_RTS)
     evac(user, (StgClosure **)(void *)&cap->inbox);
 #endif

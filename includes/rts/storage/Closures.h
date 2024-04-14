@@ -8,6 +8,11 @@
 
 #pragma once
 
+#if defined(PROFILING)
+#define GC_PROFILING
+#undef PROFILING
+#endif
+
 /*
  * The Layout of a closure header depends on which kind of system we're
  * compiling for: profiling, parallel, ticky, etc.
@@ -18,6 +23,9 @@
    -------------------------------------------------------------------------- */
 
 typedef struct {
+  // We are using the ccs field to hold the gc-id
+  // XXX Both the trav and gc-id field can be combined into one to save memory
+  // and memory access overhead per closure.
   CostCentreStack *ccs;
   union {
 
@@ -64,16 +72,14 @@ typedef struct {
 
 typedef struct {
     const StgInfoTable* info;
-// if defined(GC_PROFILING)
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     StgProfHeader         prof;
 #endif
 } StgHeader;
 
 typedef struct {
     const StgInfoTable* info;
-// if defined(GC_PROFILING)
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     StgProfHeader         prof;
 #endif
     StgSMPThunkHeader     smp;
