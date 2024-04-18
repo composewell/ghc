@@ -167,7 +167,7 @@ closureIdentity( const StgClosure *p )
 /* --------------------------------------------------------------------------
  * Profiling type predicates
  * ----------------------------------------------------------------------- */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 STATIC_INLINE bool
 doingLDVProfiling( void )
 {
@@ -440,13 +440,14 @@ initHeapProfiling(void)
         censuses[i].arena = NULL;
         censuses[i].hash = NULL;
     }
+    /* XXX change this */
     initEra( &censuses[era] );
 
     /* initProfilingLogFile(); */
     fprintf(hp_file, "JOB \"");
     printEscapedString(prog_name);
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     for (int i = 1; i < prog_argc; ++i) {
         fputc(' ', hp_file);
         printEscapedString(prog_argv[i]);
@@ -468,7 +469,7 @@ initHeapProfiling(void)
     printSample(true, 0);
     printSample(false, 0);
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     if (doingRetainerProfiling()) {
         initRetainerProfiling();
     }
@@ -486,7 +487,7 @@ endHeapProfiling(void)
         return;
     }
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     if (doingRetainerProfiling()) {
         endRetainerProfiling();
     }
@@ -874,6 +875,7 @@ dumpCensus( Census *census )
             traceHeapProfSampleString(0, (char *)ctr->identity,
                                       count * sizeof(W_));
             break;
+        // XXX
         case HEAP_BY_RETAINER:
         {
             RetainerSet *rs = (RetainerSet *)ctr->identity;
@@ -1191,6 +1193,7 @@ heapCensusChain( Census *census, bdescr *bd )
 // the mutator CPU time reported as the census timestamp.
 void heapCensus (Time t)
 {
+  /*
   uint32_t g, n;
   Census *census;
   gen_workspace *ws;
@@ -1198,15 +1201,19 @@ void heapCensus (Time t)
   census = &censuses[era];
   census->time  = TimeToSecondsDbl(t);
   census->rtime = TimeToNS(stat_getElapsedTime());
+  */
 
+
+  // fprintf(stderr, "enter heapCensus");
 
   // calculate retainer sets if necessary
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
   if (doingRetainerProfiling()) {
       retainerProfile();
   }
 #endif
 
+  /*
 #if defined(PROFILING)
   stat_startHeapCensus();
 #endif
@@ -1255,4 +1262,5 @@ void heapCensus (Time t)
 #if defined(PROFILING)
   stat_endHeapCensus();
 #endif
+*/
 }

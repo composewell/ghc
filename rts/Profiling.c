@@ -910,7 +910,9 @@ sortCCSTree(CostCentreStack *ccs)
 
     ccs->indexTable = sortedList;
 }
+#endif
 
+#if defined(GC_PROFILING)
 void
 fprintCCS( FILE *f, CostCentreStack *ccs )
 {
@@ -923,6 +925,9 @@ fprintCCS( FILE *f, CostCentreStack *ccs )
     }
     fprintf(f,">");
 }
+#endif
+
+#if defined(PROFILING)
 
 // Returns: True if the call stack ended with CAF
 static bool fprintCallStack (CostCentreStack *ccs)

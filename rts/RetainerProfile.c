@@ -7,7 +7,7 @@
  *
  * ---------------------------------------------------------------------------*/
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 #include "PosixSource.h"
 #include "Rts.h"
@@ -408,7 +408,7 @@ computeRetainerSet( traverseState *ts )
 void
 retainerProfile(void)
 {
-  stat_startRP();
+  //stat_startRP();
 
   numObjectVisited = 0;
   timesAnyObjectVisited = 0;
@@ -427,10 +427,13 @@ retainerProfile(void)
   closeTraverseStack(&g_retainerTraverseState);
   retainerGeneration++;
 
+  // prof_file is not open. Only hp_file is available.
+  /*
   stat_endRP(
     retainerGeneration - 1,   // retainerGeneration has just been incremented!
     getTraverseStackMaxSize(&g_retainerTraverseState),
     (double)timesAnyObjectVisited / numObjectVisited);
+    */
 }
 
 #endif /* PROFILING */

@@ -7,7 +7,7 @@
  *
  * ---------------------------------------------------------------------------*/
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 #include "PosixSource.h"
 #include "Rts.h"
@@ -40,6 +40,8 @@
  * valid otherwise not (see isTravDataValid). We then invert the value of 'flip'
  * on each heap traversal (see traverseWorkStack), in effect marking all
  * closure's data as invalid at once.
+ *
+ * XXX Newly created closures must initialize the trav bit to 0.
  *
  * There are some complications with this approach, namely: static objects and
  * mutable data. There we do just go over all existing objects to reset the bit

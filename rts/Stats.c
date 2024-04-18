@@ -40,7 +40,7 @@ static Time
     start_nonmoving_gc_cpu, start_nonmoving_gc_elapsed,
     start_nonmoving_gc_sync_elapsed;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 static Time RP_start_time  = 0, RP_tot_time  = 0;  // retainer prof user time
 static Time RPe_start_time = 0, RPe_tot_time = 0;  // retainer prof elap time
 
@@ -107,7 +107,7 @@ mut_user_time( void )
     return mut_user_time_until(cpu);
 }
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 /*
   mut_user_time_during_RP() returns the MUT time during retainer profiling.
   The same is for mut_user_time_during_HC();
@@ -147,7 +147,7 @@ initStats0(void)
     end_exit_cpu     = 0;
     end_exit_elapsed  = 0;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     RP_start_time  = 0;
     RP_tot_time  = 0;
     RPe_start_time = 0;
@@ -542,7 +542,11 @@ stat_endGC (Capability *cap, gc_thread *initiating_gct, W_ live, W_ copied, W_ s
 
     stats.gcs++;
 #ifdef GC_PROFILING
-    era++;
+    //era++;
+    // XXX The lsb of era should always be 0 for heap traversal visited bit to
+    // work. This header word is currently used as retainer_set. So we need to
+    // use a separate word for era. Or reuse ccs field for that.
+    era = 0;
 #endif
     stats.allocated_bytes = tot_alloc_bytes;
     stats.max_mem_in_use_bytes = peak_mblocks_allocated * MBLOCK_SIZE;
@@ -941,7 +945,7 @@ static void report_summary(const RTSSummaryStats* sum)
                 TimeToSecondsDbl(stats.nonmoving_gc_elapsed_ns));
     }
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     statsPrintf("  RP      time  %7.3fs  (%7.3fs elapsed)\n",
                 TimeToSecondsDbl(sum->rp_cpu_ns),
                 TimeToSecondsDbl(sum->rp_elapsed_ns));
@@ -1103,11 +1107,11 @@ static void report_machine_readable (const RTSSummaryStats * sum)
 
     MR_STAT("exit_cpu_seconds", "f", TimeToSecondsDbl(sum->exit_cpu_ns));
     MR_STAT("exit_wall_seconds", "f", TimeToSecondsDbl(sum->exit_elapsed_ns));
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     MR_STAT("rp_cpu_seconds", "f", TimeToSecondsDbl(sum->rp_cpu_ns));
     MR_STAT("rp_wall_seconds", "f", TimeToSecondsDbl(sum->rp_elapsed_ns));
-    MR_STAT("hc_cpu_seconds", "f", TimeToSecondsDbl(sum->hc_cpu_ns));
-    MR_STAT("hc_wall_seconds", "f", TimeToSecondsDbl(sum->hc_elapsed_ns));
+    //MR_STAT("hc_cpu_seconds", "f", TimeToSecondsDbl(sum->hc_cpu_ns));
+    //MR_STAT("hc_wall_seconds", "f", TimeToSecondsDbl(sum->hc_elapsed_ns));
 #endif
     MR_STAT("total_cpu_seconds", "f", TimeToSecondsDbl(stats.cpu_ns));
     MR_STAT("total_wall_seconds", "f",
@@ -1275,11 +1279,11 @@ stat_exitReport (void)
             if (stats.cpu_ns <= 0) { stats.cpu_ns = 1; }
             if (stats.elapsed_ns <= 0) { stats.elapsed_ns = 1; }
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
             sum.rp_cpu_ns = RP_tot_time;
             sum.rp_elapsed_ns = RPe_tot_time;
-            sum.hc_cpu_ns = HC_tot_time;
-            sum.hc_elapsed_ns = HCe_tot_time;
+            //sum.hc_cpu_ns = HC_tot_time;
+            //sum.hc_elapsed_ns = HCe_tot_time;
 #endif // PROFILING
 
             // We do a GC during the EXIT phase. We'll attribute the cost of
