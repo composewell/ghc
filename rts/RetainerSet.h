@@ -31,6 +31,7 @@
 */
 
 
+// XXX Use info table ptr instead of ccs ptr
 typedef CostCentreStack *retainer;
 
 /*

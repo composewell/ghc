@@ -236,7 +236,10 @@ getRetainerFrom( StgClosure *c )
 {
     ASSERT(isRetainer(c));
 
-    return c->header.prof.ccs;
+    if (c->header.prof.ccs == NULL) {
+      // barf("ccs is NULL\n");
+      return CCS_SYSTEM;
+    } else return c->header.prof.ccs;
 }
 
 /* -----------------------------------------------------------------------------
@@ -292,9 +295,12 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
         // This is the first visit to *c.
         numObjectVisited++;
 
+        // If parent is retainer, use parent as retainer
         if (s == NULL)
             associate(c, singleton(r));
         else
+            // otherwise use parent's retainer set
+            // XXX Why are we not adding element r to the set?
             // s is actually the retainer set of *c!
             associate(c, s);
 
@@ -408,7 +414,7 @@ computeRetainerSet( traverseState *ts )
 void
 retainerProfile(void)
 {
-  //stat_startRP();
+  // stat_startRP();
 
   numObjectVisited = 0;
   timesAnyObjectVisited = 0;
@@ -427,13 +433,12 @@ retainerProfile(void)
   closeTraverseStack(&g_retainerTraverseState);
   retainerGeneration++;
 
-  // prof_file is not open. Only hp_file is available.
   /*
   stat_endRP(
     retainerGeneration - 1,   // retainerGeneration has just been incremented!
     getTraverseStackMaxSize(&g_retainerTraverseState),
     (double)timesAnyObjectVisited / numObjectVisited);
-    */
+  */
 }
 
 #endif /* PROFILING */

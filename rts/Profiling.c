@@ -102,20 +102,6 @@ CCS_DECLARE(CCS_DONT_CARE,  CC_DONT_CARE,  );
 CCS_DECLARE(CCS_PINNED,     CC_PINNED,     );
 CCS_DECLARE(CCS_IDLE,       CC_IDLE,       );
 
-#endif
-
-#if defined(GC_PROFILING)
-// Required by utils/iserv
-void registerCcList(CostCentre **cc_list)
-{
-}
-
-void registerCcsList(CostCentreStack **cc_list)
-{
-}
-#endif
-
-#if defined(PROFILING)
 /*
  * Static Functions
  */
@@ -159,9 +145,12 @@ dumpCostCentresToEventLog(void)
 #endif
 }
 
+// We are using this mainly for prof_file initialization because it is beign
+// used by retainer profiling to dump some info.
 void initProfiling (void)
 {
     // initialise our arena
+    // XXX can remove it, what is this for?
     prof_arena = newArena();
 
     /* for the benefit of allocate()... */
@@ -211,9 +200,11 @@ void initProfiling (void)
 
     refreshProfilingCCSs();
 
+    /*
     if (RtsFlags.CcFlags.doCostCentres) {
         initTimeProfiling();
     }
+    */
 
     dumpCostCentresToEventLog();
 }
@@ -746,11 +737,13 @@ reportCCSProfiling( void )
     CostCentreStack *stack = pruneCCSTree(CCS_MAIN);
     sortCCSTree(stack);
 
+    /*
     if (RtsFlags.CcFlags.doCostCentres == COST_CENTRES_JSON) {
         writeCCSReportJson(prof_file, stack, totals);
     } else {
         writeCCSReport(prof_file, stack, totals);
     }
+    */
 }
 
 /* -----------------------------------------------------------------------------
@@ -910,9 +903,7 @@ sortCCSTree(CostCentreStack *ccs)
 
     ccs->indexTable = sortedList;
 }
-#endif
 
-#if defined(GC_PROFILING)
 void
 fprintCCS( FILE *f, CostCentreStack *ccs )
 {
@@ -925,9 +916,6 @@ fprintCCS( FILE *f, CostCentreStack *ccs )
     }
     fprintf(f,">");
 }
-#endif
-
-#if defined(PROFILING)
 
 // Returns: True if the call stack ended with CAF
 static bool fprintCallStack (CostCentreStack *ccs)

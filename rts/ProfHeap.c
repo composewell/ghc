@@ -123,7 +123,8 @@ closureIdentity( const StgClosure *p )
 {
     switch (RtsFlags.ProfFlags.doHeapProfile) {
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
+    /*
     case HEAP_BY_CCS:
         return p->header.prof.ccs;
     case HEAP_BY_MOD:
@@ -132,6 +133,7 @@ closureIdentity( const StgClosure *p )
         return GET_PROF_DESC(get_itbl(p));
     case HEAP_BY_TYPE:
         return GET_PROF_TYPE(get_itbl(p));
+    */
     case HEAP_BY_RETAINER:
         // AFAIK, the only closures in the heap which might not have a
         // valid retainer set are DEAD_WEAK closures.
@@ -141,6 +143,7 @@ closureIdentity( const StgClosure *p )
             return NULL;
 #endif
 
+    /*
     case HEAP_BY_CLOSURE_TYPE:
     {
         const StgInfoTable *info;
@@ -158,6 +161,7 @@ closureIdentity( const StgClosure *p )
             return closure_type_names[info->type];
         }
     }
+    */
 
     default:
         barf("closureIdentity");
@@ -531,7 +535,7 @@ endHeapProfiling(void)
 
 
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 static size_t
 buf_append(char *p, const char *q, char *end)
 {
@@ -783,14 +787,11 @@ dumpCensus( Census *census )
 
     printSample(true, census->time);
 
-
     if (RtsFlags.ProfFlags.doHeapProfile == HEAP_BY_LDV) {
       traceHeapBioProfSampleBegin(era, census->rtime);
     } else {
       traceHeapProfSampleBegin(era);
     }
-
-
 
 #if defined(PROFILING)
 
@@ -856,12 +857,15 @@ dumpCensus( Census *census )
         if (count == 0) continue;
 
         switch (RtsFlags.ProfFlags.doHeapProfile) {
+        /*
         case HEAP_BY_CLOSURE_TYPE:
             fprintf(hp_file, "%s", (char *)ctr->identity);
             traceHeapProfSampleString(0, (char *)ctr->identity,
                                       count * sizeof(W_));
             break;
-#if defined(PROFILING)
+        */
+#if defined(GC_PROFILING)
+        /*
         case HEAP_BY_CCS:
             fprint_ccs(hp_file, (CostCentreStack *)ctr->identity,
                        RtsFlags.ProfFlags.ccsLength);
@@ -875,7 +879,7 @@ dumpCensus( Census *census )
             traceHeapProfSampleString(0, (char *)ctr->identity,
                                       count * sizeof(W_));
             break;
-        // XXX
+        */
         case HEAP_BY_RETAINER:
         {
             RetainerSet *rs = (RetainerSet *)ctr->identity;
@@ -915,7 +919,7 @@ dumpCensus( Census *census )
 
 static void heapProfObject(Census *census, StgClosure *p, size_t size,
                            bool prim
-#if !defined(PROFILING)
+#if !defined(GC_PROFILING)
                            STG_UNUSED
 #endif
                            )
@@ -926,7 +930,7 @@ static void heapProfObject(Census *census, StgClosure *p, size_t size,
 
             identity = NULL;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
             // subtract the profiling overhead
             real_size = size - sizeofW(StgProfHeader);
 #else
@@ -1193,7 +1197,6 @@ heapCensusChain( Census *census, bdescr *bd )
 // the mutator CPU time reported as the census timestamp.
 void heapCensus (Time t)
 {
-  /*
   uint32_t g, n;
   Census *census;
   gen_workspace *ws;
@@ -1201,10 +1204,7 @@ void heapCensus (Time t)
   census = &censuses[era];
   census->time  = TimeToSecondsDbl(t);
   census->rtime = TimeToNS(stat_getElapsedTime());
-  */
 
-
-  // fprintf(stderr, "enter heapCensus");
 
   // calculate retainer sets if necessary
 #if defined(GC_PROFILING)
@@ -1213,8 +1213,7 @@ void heapCensus (Time t)
   }
 #endif
 
-  /*
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
   stat_startHeapCensus();
 #endif
 
@@ -1228,7 +1227,8 @@ void heapCensus (Time t)
 
       for (n = 0; n < n_capabilities; n++) {
           ws = &gc_threads[n]->gens[g];
-          heapCensusChain(census, ws->todo_bd);
+          // XXX currently crashing because of ccs->cc not being set properly.
+          // heapCensusChain(census, ws->todo_bd);
           heapCensusChain(census, ws->part_list);
           heapCensusChain(census, ws->scavd_list);
       }
@@ -1247,7 +1247,7 @@ void heapCensus (Time t)
 
   // free our storage, unless we're keeping all the census info for
   // future restriction by biography.
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
   if (RtsFlags.ProfFlags.bioSelector == NULL)
   {
       freeEra(census);
@@ -1259,8 +1259,7 @@ void heapCensus (Time t)
   // we're into the next time period now
   nextEra();
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
   stat_endHeapCensus();
 #endif
-*/
 }

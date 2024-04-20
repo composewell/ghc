@@ -315,7 +315,7 @@ hs_init_ghc(int *argc, char **argv[], RtsConfig rts_config)
     initThreadLabelTable();
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     initProfiling();
 #endif
     initHeapProfiling();

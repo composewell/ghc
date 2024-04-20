@@ -318,6 +318,13 @@ staticLdvInit = zeroCLit
 --
 dynLdvInit :: DynFlags -> CmmExpr
 dynLdvInit = loadEra
+{-
+dynLdvInit dflags =     -- (era << LDV_SHIFT) | LDV_STATE_CREATE
+  CmmMachOp (mo_wordOr dflags) [
+      CmmMachOp (mo_wordShl dflags) [loadEra dflags, mkIntExpr dflags (lDV_SHIFT dflags)],
+      CmmLit (mkWordCLit dflags (iLDV_STATE_CREATE dflags))
+  ]
+-}
 
 --
 -- Initialise the LDV word of a new closure
@@ -358,9 +365,14 @@ ldvEnter cl_ptr = do
                      mkNop
 
 loadEra :: DynFlags -> CmmExpr
+{-
 loadEra dflags =
     CmmLoad (mkLblExpr (mkRtsCmmDataLabel (fsLit "era")))
              (bWord dflags)
+-}
+loadEra dflags = CmmMachOp (MO_UU_Conv (cIntWidth dflags) (wordWidth dflags))
+    [CmmLoad (mkLblExpr (mkRtsCmmDataLabel (fsLit "era")))
+             (cInt dflags)]
 
 ldvWord :: DynFlags -> CmmExpr -> CmmExpr
 -- Takes the address of a closure, and returns

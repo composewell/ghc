@@ -672,7 +672,7 @@ stat_endGC (Capability *cap, gc_thread *initiating_gct, W_ live, W_ copied, W_ s
 /* -----------------------------------------------------------------------------
    Called at the beginning of each Retainer Profiliing
    -------------------------------------------------------------------------- */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void
 stat_startRP(void)
 {
@@ -690,7 +690,7 @@ stat_startRP(void)
    Called at the end of each Retainer Profiliing
    -------------------------------------------------------------------------- */
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void
 stat_endRP(
   uint32_t retainerGeneration,
@@ -717,7 +717,7 @@ stat_endRP(
 /* -----------------------------------------------------------------------------
    Called at the beginning of each heap census
    -------------------------------------------------------------------------- */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void
 stat_startHeapCensus(void)
 {
@@ -734,7 +734,7 @@ stat_startHeapCensus(void)
 /* -----------------------------------------------------------------------------
    Called at the end of each heap census
    -------------------------------------------------------------------------- */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void
 stat_endHeapCensus(void)
 {
