@@ -1537,14 +1537,16 @@ scheduleHandleThreadFinished (Capability *cap, Task *task, StgTSO *t)
  * Perform a heap census
  * -------------------------------------------------------------------------- */
 
+static bool profileOnce = true;
+
 static bool
 scheduleNeedHeapProfile( bool ready_to_gc )
 {
     // When we have +RTS -i0 and we're heap profiling, do a census at
     // every GC.  This lets us get repeatable runs for debugging.
-    if (performHeapProfile ||
+    if (profileOnce == true && (performHeapProfile ||
         (RtsFlags.ProfFlags.heapProfileInterval==0 &&
-         RtsFlags.ProfFlags.doHeapProfile && ready_to_gc)) {
+         RtsFlags.ProfFlags.doHeapProfile && ready_to_gc))) {
         return true;
     } else {
         return false;
@@ -2073,6 +2075,7 @@ delete_threads_and_gc:
     // The heap census itself is done during GarbageCollect().
     if (heap_census) {
         performHeapProfile = false;
+        profileOnce = false;
     }
 
 #if defined(THREADED_RTS)

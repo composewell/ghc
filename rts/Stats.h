@@ -50,7 +50,7 @@ void      stat_startRP(void);
 void      stat_endRP(uint32_t, int, double);
 #endif /* PROFILING */
 
-#if defined(PROFILING) || defined(DEBUG)
+#if defined(GC_PROFILING) || defined(DEBUG)
 void      stat_startHeapCensus(void);
 void      stat_endHeapCensus(void);
 #endif

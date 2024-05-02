@@ -886,11 +886,12 @@ GarbageCollect (uint32_t collect_gen,
       checkUnload();
   }
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
   // resetStaticObjectForProfiling() must be called before
   // zeroing below.
 
   // ToDo: fix the gct->scavenged_static_objects below
+  // XXX this does not seem to make a difference.
   resetStaticObjectForProfiling(gct->scavenged_static_objects);
 #endif
 

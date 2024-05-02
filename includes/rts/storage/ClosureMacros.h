@@ -532,7 +532,7 @@ INLINE_HEADER StgWord8 *mutArrPtrsCard (StgMutArrPtrs *a, W_ n)
 #define OVERWRITING_CLOSURE_OFS(c,n) /* nothing */
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void LDV_recordDead (const StgClosure *c, uint32_t size);
 #endif
 

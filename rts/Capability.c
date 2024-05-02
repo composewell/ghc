@@ -1293,7 +1293,10 @@ markCapability (evac_fn evac, void *user, Capability *cap,
     // are more, we mark every Capability whose number is the GC
     // thread's index plus a multiple of the number of GC threads.
     evac(user, (StgClosure **)(void *)&cap->run_queue_hd);
-    evac(user, (StgClosure **)(void *)&cap->run_queue_tl);
+    // XXX Don't we need to mark the entire queue?
+    if (cap->run_queue_hd != cap->run_queue_tl) {
+      evac(user, (StgClosure **)(void *)&cap->run_queue_tl);
+    }
 #if defined(THREADED_RTS)
     evac(user, (StgClosure **)(void *)&cap->inbox);
 #endif

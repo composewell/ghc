@@ -26,10 +26,12 @@
 #include <fs_rts.h>
 #include <string.h>
 
+#if defined(GC_PROFILING)
 void
-LDV_recordDead( const StgClosure *c, uint32_t size )
+LDV_recordDead( const StgClosure *c STG_UNUSED , uint32_t size  STG_UNUSED )
 {
 }
+#endif
 
 FILE *hp_file;
 static char *hp_filename; /* heap profile (hp2ps style) log file */
@@ -119,7 +121,11 @@ static bool closureSatisfiesConstraints( const StgClosure* p );
  * heap profile.
  * ------------------------------------------------------------------------- */
 static const void *
-closureIdentity( const StgClosure *p )
+closureIdentity( const StgClosure *p 
+#if !defined(GC_PROFILING)
+    STG_UNUSED
+#endif
+    )
 {
     switch (RtsFlags.ProfFlags.doHeapProfile) {
 
@@ -172,12 +178,14 @@ closureIdentity( const StgClosure *p )
  * Profiling type predicates
  * ----------------------------------------------------------------------- */
 #if defined(GC_PROFILING)
+/*
 STATIC_INLINE bool
 doingLDVProfiling( void )
 {
     return (RtsFlags.ProfFlags.doHeapProfile == HEAP_BY_LDV
             || RtsFlags.ProfFlags.bioSelector != NULL);
 }
+*/
 
 bool
 doingRetainerProfiling( void )
@@ -536,6 +544,7 @@ endHeapProfiling(void)
 
 
 #if defined(GC_PROFILING)
+/*
 static size_t
 buf_append(char *p, const char *q, char *end)
 {
@@ -587,6 +596,7 @@ fprint_ccs(FILE *fp, CostCentreStack *ccs, uint32_t max_length)
     }
     fprintf(fp, "%s", buf);
 }
+*/
 
 bool
 strMatchesSelector( const char* str, const char* sel )
@@ -919,7 +929,7 @@ dumpCensus( Census *census )
 
 static void heapProfObject(Census *census, StgClosure *p, size_t size,
                            bool prim
-#if !defined(GC_PROFILING)
+#if !defined(PROFILING)
                            STG_UNUSED
 #endif
                            )
@@ -1010,6 +1020,153 @@ heapCensusCompactList(Census *census, bdescr *bd)
         heapProfObject(census, (StgClosure*)str,
                        compact_nfdata_full_sizeW(str), true);
     }
+}
+
+extern size_t getClosureSize(const StgClosure *p);
+
+// Size in Stg Words units.
+size_t getClosureSize(const StgClosure *p) {
+    const StgInfoTable *info;
+    size_t size;
+    //bool prim;
+
+    info = get_itbl(p);
+    //prim = false;
+
+    switch (info->type) {
+
+    case THUNK:
+        size = thunk_sizeW_fromITBL(info);
+        break;
+
+    case THUNK_1_1:
+    case THUNK_0_2:
+    case THUNK_2_0:
+        size = sizeofW(StgThunkHeader) + 2;
+        break;
+
+    case THUNK_1_0:
+    case THUNK_0_1:
+    case THUNK_SELECTOR:
+        size = sizeofW(StgThunkHeader) + 1;
+        break;
+
+    case FUN:
+    case BLACKHOLE:
+    case BLOCKING_QUEUE:
+    case FUN_1_0:
+    case FUN_0_1:
+    case FUN_1_1:
+    case FUN_0_2:
+    case FUN_2_0:
+    case CONSTR:
+    case CONSTR_NOCAF:
+    case CONSTR_1_0:
+    case CONSTR_0_1:
+    case CONSTR_1_1:
+    case CONSTR_0_2:
+    case CONSTR_2_0:
+        size = sizeW_fromITBL(info);
+        break;
+
+    case IND:
+        // Special case/Delicate Hack: INDs don't normally
+        // appear, since we're doing this heap census right
+        // after GC.  However, GarbageCollect() also does
+        // resurrectThreads(), which can update some
+        // blackholes when it calls raiseAsync() on the
+        // resurrected threads.  So we know that any IND will
+        // be the size of a BLACKHOLE.
+        size = BLACKHOLE_sizeW();
+        break;
+
+    case BCO:
+        //prim = true;
+        size = bco_sizeW((StgBCO *)p);
+        break;
+
+    case MVAR_CLEAN:
+    case MVAR_DIRTY:
+    case TVAR:
+    case WEAK:
+    case PRIM:
+    case MUT_PRIM:
+    case MUT_VAR_CLEAN:
+    case MUT_VAR_DIRTY:
+        //prim = true;
+        size = sizeW_fromITBL(info);
+        break;
+
+    case AP:
+        size = ap_sizeW((StgAP *)p);
+        break;
+
+    case PAP:
+        size = pap_sizeW((StgPAP *)p);
+        break;
+
+    case AP_STACK:
+        size = ap_stack_sizeW((StgAP_STACK *)p);
+        break;
+
+    case ARR_WORDS:
+        //prim = true;
+        size = arr_words_sizeW((StgArrBytes*)p);
+        break;
+
+    case MUT_ARR_PTRS_CLEAN:
+    case MUT_ARR_PTRS_DIRTY:
+    case MUT_ARR_PTRS_FROZEN_CLEAN:
+    case MUT_ARR_PTRS_FROZEN_DIRTY:
+        //prim = true;
+        size = mut_arr_ptrs_sizeW((StgMutArrPtrs *)p);
+        break;
+
+    case SMALL_MUT_ARR_PTRS_CLEAN:
+    case SMALL_MUT_ARR_PTRS_DIRTY:
+    case SMALL_MUT_ARR_PTRS_FROZEN_CLEAN:
+    case SMALL_MUT_ARR_PTRS_FROZEN_DIRTY:
+        //prim = true;
+        size = small_mut_arr_ptrs_sizeW((StgSmallMutArrPtrs *)p);
+        break;
+
+    case TSO:
+        //prim = true;
+        size = sizeofW(StgTSO);
+        break;
+
+    case STACK:
+        //prim = true;
+        size = stack_sizeW((StgStack*)p);
+        break;
+
+    case TREC_CHUNK:
+        //prim = true;
+        size = sizeofW(StgTRecChunk);
+        break;
+
+    case COMPACT_NFDATA:
+        barf("getClosureSize, found compact object in the wrong list");
+        break;
+
+    // XXX Is this correct?
+    case FUN_STATIC: size = sizeofW(StgClosure); break;
+    case THUNK_STATIC: size = sizeofW(StgClosure); break;
+    case IND_STATIC: size = sizeofW(StgIndStatic); break;
+
+    default:
+        barf("getClosureSize, unknown object: %d", info->type);
+    }
+
+#if defined(GC_PROFILING)
+    // subtract the profiling overhead
+    // return (size - sizeofW(StgProfHeader));
+    // XXX We can correlate the memory data with actual memory usage if we
+    // include the profiling overhead as well.
+    return size;
+#else
+    return size;
+#endif
 }
 
 /* -----------------------------------------------------------------------------
@@ -1213,6 +1370,7 @@ void heapCensus (Time t)
   }
 #endif
 
+/*
 #if defined(GC_PROFILING)
   stat_startHeapCensus();
 #endif
@@ -1262,4 +1420,5 @@ void heapCensus (Time t)
 #if defined(GC_PROFILING)
   stat_endHeapCensus();
 #endif
+*/
 }

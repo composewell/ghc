@@ -292,6 +292,9 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
 
     // (c, cp, r, s, R_r) is available, so compute the retainer set for *c.
     if (retainerSetOfc == NULL) {
+        if (!first_visit) {
+          barf ("not first_visit but retainerSetOfc NULL\n");
+        }
         // This is the first visit to *c.
         numObjectVisited++;
 
@@ -307,6 +310,9 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
         // compute c_child_r
         out_data->c_child_r = isRetainer(c) ? getRetainerFrom(c) : r;
     } else {
+        if (first_visit) {
+          barf ("first_visit but retainerSetOfc not NULL\n");
+        }
         // This is not the first visit to *c.
         if (isMember(r, retainerSetOfc))
             return 0;          // no need to process children
@@ -340,6 +346,9 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
     return 1; // do process children
 }
 
+// XXX Limit the maximum amount of data written to the prof file, so that we do
+// not get stuck for too long. Or we can put an upper limit on time and check
+// the time after every n closures visited.
 /**
  *  Push every object reachable from *tl onto the traversal work stack.
  */
@@ -353,11 +362,15 @@ retainRoot(void *user, StgClosure **tl)
     // be a root.
 
     c = UNTAG_CLOSURE(*tl);
+    //fprintf (stderr, "retainRoot: closure %p\n", c);
+    // XXX Do we need this?
     traverseMaybeInitClosureData(c);
     if (c != &stg_END_TSO_QUEUE_closure && isRetainer(c)) {
-        traversePushClosure(ts, c, c, (stackData)getRetainerFrom(c));
+        //fprintf (hp_file, "0: %s\n", GET_PROF_DESC(get_itbl(c)));
+        traversePushClosure(0, ts, c, c, (stackData)getRetainerFrom(c));
     } else {
-        traversePushClosure(ts, c, c, (stackData)CCS_SYSTEM);
+        //fprintf (hp_file, "0: stg_END_TSO_QUEUE_closure\n");
+        traversePushClosure(0, ts, c, c, (stackData)CCS_SYSTEM);
     }
 
     // NOT TRUE: ASSERT(isMember(getRetainerFrom(*tl), retainerSetOf(*tl)));
@@ -374,7 +387,15 @@ computeRetainerSet( traverseState *ts )
     StgWeak *weak;
     uint32_t g, n;
 
-    markCapabilities(retainRoot, (void*)ts); // for scheduler roots
+    // XXX Push in reverse order, so that we traverse the TSO first and weak
+    // and stable ptrs last..
+
+    // Consider roots from the stable ptr table.
+    //fprintf (hp_file, "Begin: stable ptr\n");
+    markStablePtrTable(retainRoot, (void*)ts);
+    //fprintf (hp_file, "End: stable ptr\n");
+    // Remember old stable name addresses.
+    rememberOldStableNameAddresses ();
 
     // This function is called after a major GC, when key, value, and finalizer
     // all are guaranteed to be valid, or reachable.
@@ -387,17 +408,18 @@ computeRetainerSet( traverseState *ts )
         ASSERT(capabilities[n]->weak_ptr_list_hd == NULL);
         ASSERT(capabilities[n]->weak_ptr_list_tl == NULL);
     }
+    //fprintf (hp_file, "Begin: Weak roots\n");
     for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
         for (weak = generations[g].weak_ptr_list; weak != NULL; weak = weak->link) {
             // retainRoot((StgClosure *)weak);
             retainRoot((void*)ts, (StgClosure **)&weak);
         }
     }
+    //fprintf (hp_file, "End: Weak roots\n");
 
-    // Consider roots from the stable ptr table.
-    markStablePtrTable(retainRoot, (void*)ts);
-    // Remember old stable name addresses.
-    rememberOldStableNameAddresses ();
+    //fprintf (hp_file, "Begin: Scheduler roots\n");
+    markCapabilities(retainRoot, (void*)ts); // for scheduler roots
+    //fprintf (hp_file, "End: Scheduler roots\n");
 
     traverseWorkStack(ts, &retainVisitClosure);
 }
@@ -414,6 +436,7 @@ computeRetainerSet( traverseState *ts )
 void
 retainerProfile(void)
 {
+  fprintf (hp_file, "-----------Begin retainer profile-------------\n");
   // stat_startRP();
 
   numObjectVisited = 0;
@@ -439,6 +462,7 @@ retainerProfile(void)
     getTraverseStackMaxSize(&g_retainerTraverseState),
     (double)timesAnyObjectVisited / numObjectVisited);
   */
+  fprintf (hp_file, "-----------End retainer profile-------------\n");
 }
 
 #endif /* PROFILING */
