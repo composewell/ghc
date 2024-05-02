@@ -1,0 +1,4 @@
+./hadrian/build.sh --flavour=quick
+./hadrian/build.sh --flavour=quick --freeze1
+_build/stage1/bin/ghc -prof -ddump-cmm -ddump-to-file -rtsopts -fforce-recomp ./fib.hs
+./fib +RTS -i0 -hr -s
