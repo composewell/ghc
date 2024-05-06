@@ -814,8 +814,10 @@ begin:
             c_untagged = UNTAG_CLOSURE(*c);
             bool first_visit = traverseIsFirstVisit(c_untagged);
             if (first_visit) {
-              cl_size = openClosure (*c, *cur_level);
-              *cur_size = *cur_size + cl_size;
+              if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+                cl_size = openClosure (*c, *cur_level);
+                *cur_size = *cur_size + cl_size;
+              }
               return;
             } else {
               // some top level weak closures get added by stable ptrs
@@ -1008,8 +1010,12 @@ out:
     c_untagged = UNTAG_CLOSURE(*c);
     bool first_visit = traverseIsFirstVisit(c_untagged);
     if (first_visit) {
-      cl_size = openClosure(*c, *cur_level);
-      se->se_size += *cur_size + cl_size;
+      if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+        cl_size = openClosure(*c, *cur_level);
+        se->se_size += *cur_size + cl_size;
+      } else {
+        se->se_size += *cur_size;
+      }
       *cur_size = 0;
 
       *cp = se->c;
@@ -1319,7 +1325,11 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // XXX record the thread-id of allocator along with gc-id
     // XXX Filter based on thread-id
     // XXX load trav/flip bit correctly, it does not work for static closures
-    fprintf (hp_file, "stats.gcs {%u}\n", getNumGcs());
+    fprintf (hp_file, "stats.gcs: {%u}\n", getNumGcs());
+    /*
+    fprintf (hp_file, "Haskell heap base address: {%lx}\n"
+          , mblock_address_space.begin);
+    */
 
     // c = Current closure                           (possibly tagged)
     // cp = Current closure's Parent                 (NOT tagged)
@@ -1358,8 +1368,10 @@ inner_loop:
         c = ((StgIndStatic *)c)->indirectee;
         // XXX We are not increasing the cur_level here, so the entries
         // corresponding to this may be confusing.
-        size_t cl_size = openClosure (c, cur_level);
-        cur_size += cl_size;
+        if ((char *)(UNTAG_CLOSURE(c)) >= (char *)mblock_address_space.begin) {
+          size_t cl_size = openClosure (c, cur_level);
+          cur_size += cl_size;
+        }
         goto inner_loop;
 
     case CONSTR_NOCAF:
@@ -1525,7 +1537,11 @@ inner_loop:
     bool first_visit1 = traverseIsFirstVisit(c_untagged);
     if (first_visit1) {
       cur_level = cur_level + 1;
-      cur_size = openClosure(c, cur_level);
+      if ((char *)(c_untagged) >= (char *)mblock_address_space.begin) {
+        cur_size = openClosure(c, cur_level);
+      } else {
+        cur_size = 0;
+      }
       goto inner_loop;
     } else {
       /*
