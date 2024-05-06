@@ -634,6 +634,9 @@ run_thread:
     {
         StgRegTable *r;
 
+#if defined(GC_PROFILING)
+        t->prof.cccs = getNumGcs();
+#endif
         traceEventCounterStart (cap, task, t);
         updateThreadCPUTimePre (cap, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
@@ -698,8 +701,8 @@ run_thread:
 
     // Costs for the scheduler are assigned to CCS_SYSTEM
     stopHeapProfTimer();
-#if defined(PROFILING)
-    cap->r.rCCCS = CCS_SYSTEM;
+#if defined(GC_PROFILING)
+    cap->r.rCCCS = -1;
 #endif
 
     schedulePostRunThread(cap,t);

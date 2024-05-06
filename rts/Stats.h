@@ -119,5 +119,6 @@ typedef struct RTSSummaryStats_ {
 } RTSSummaryStats;
 
 StgWord64 getGCCPUStats(void);
+uint32_t getNumGcs(void);
 
 #include "EndPrivate.h"

@@ -797,11 +797,14 @@ dumpCensus( Census *census )
 
     printSample(true, census->time);
 
+
     if (RtsFlags.ProfFlags.doHeapProfile == HEAP_BY_LDV) {
       traceHeapBioProfSampleBegin(era, census->rtime);
     } else {
       traceHeapProfSampleBegin(era);
     }
+
+
 
 #if defined(PROFILING)
 
@@ -1371,7 +1374,7 @@ void heapCensus (Time t)
 #endif
 
 /*
-#if defined(GC_PROFILING)
+#if defined(PROFILING)
   stat_startHeapCensus();
 #endif
 
@@ -1385,8 +1388,7 @@ void heapCensus (Time t)
 
       for (n = 0; n < n_capabilities; n++) {
           ws = &gc_threads[n]->gens[g];
-          // XXX currently crashing because of ccs->cc not being set properly.
-          // heapCensusChain(census, ws->todo_bd);
+          heapCensusChain(census, ws->todo_bd);
           heapCensusChain(census, ws->part_list);
           heapCensusChain(census, ws->scavd_list);
       }
@@ -1405,7 +1407,7 @@ void heapCensus (Time t)
 
   // free our storage, unless we're keeping all the census info for
   // future restriction by biography.
-#if defined(GC_PROFILING)
+#if defined(PROFILING)
   if (RtsFlags.ProfFlags.bioSelector == NULL)
   {
       freeEra(census);
@@ -1417,7 +1419,7 @@ void heapCensus (Time t)
   // we're into the next time period now
   nextEra();
 
-#if defined(GC_PROFILING)
+#if defined(PROFILING)
   stat_endHeapCensus();
 #endif
 */

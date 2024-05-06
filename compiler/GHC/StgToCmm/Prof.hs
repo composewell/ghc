@@ -76,8 +76,10 @@ costCentreFrom dflags cl = CmmLoad (cmmOffsetB dflags cl (oFFSET_StgHeader_ccs d
 -- | The profiling header words in a static closure
 staticProfHdr :: DynFlags -> CostCentreStack -> [CmmLit]
 staticProfHdr dflags ccs
- = ifProfilingL dflags [mkCCostCentreStack dontCareCCS, staticLdvInit dflags]
+ -- = ifProfilingL dflags [mkCCostCentreStack dontCareCCS, staticLdvInit dflags]
+ = ifProfilingL dflags [CmmInt 1010101010101 W64, staticLdvInit dflags]
 
+-- ccs is cccsExpr - which is CCCS register.
 -- | Profiling header words in a dynamic closure
 dynProfHdr :: DynFlags -> CmmExpr -> [CmmExpr]
 dynProfHdr dflags ccs = ifProfilingL dflags [ccs, dynLdvInit dflags]
@@ -85,7 +87,7 @@ dynProfHdr dflags ccs = ifProfilingL dflags [ccs, dynLdvInit dflags]
 -- | Initialise the profiling field of an update frame
 initUpdFrameProf :: CmmExpr -> FCode ()
 initUpdFrameProf frame
-  = ifProfiling $        -- frame->header.prof.ccs = CCCS
+  = ifProfiling1 $        -- frame->header.prof.ccs = CCCS
     do dflags <- getDynFlags
        emitStore (cmmOffset dflags frame (oFFSET_StgHeader_ccs dflags)) cccsExpr
         -- frame->header.prof.hp.rs = NULL (or frame-header.prof.hp.ldvw = 0)
@@ -195,6 +197,13 @@ ifProfiling _code = return ()
            then code
            else return ()
 -}
+
+ifProfiling1 :: FCode () -> FCode ()
+ifProfiling1 code
+  = do dflags <- getDynFlags
+       if gopt Opt_SccProfilingOn dflags
+           then code
+           else return ()
 
 ifProfilingL :: DynFlags -> [a] -> [a]
 ifProfilingL dflags xs

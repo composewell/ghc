@@ -1743,6 +1743,14 @@ StgWord64 getGCCPUStats(void)
     return stats.gc_cpu_ns;
 }
 
+// XXX do we need a mutex for this?
+// XXX 32-bit field might overflow?
+// Should we use major_gcs instead?
+uint32_t getNumGcs(void)
+{
+    return stats.gcs;
+}
+
 /* -----------------------------------------------------------------------------
    Dumping stuff in the stats file, or via the debug message interface
    -------------------------------------------------------------------------- */

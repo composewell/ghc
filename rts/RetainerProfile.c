@@ -236,6 +236,7 @@ getRetainerFrom( StgClosure *c )
 {
     ASSERT(isRetainer(c));
 
+    // XXX
     if (c->header.prof.ccs == NULL) {
       // barf("ccs is NULL\n");
       return CCS_SYSTEM;

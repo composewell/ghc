@@ -119,11 +119,13 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
    Macros for building closures
    -------------------------------------------------------------------------- */
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 /*
   The following macro works for both retainer profiling and LDV profiling. For
  retainer profiling, 'era' remains 0, so by setting the 'ldvw' field we also set
  'rs' to zero.
+
+ XXX we depend on correct flip bit?
 
  Note that we don't have to bother handling the 'flip' bit properly[1] since the
  retainer profiling code will just set 'rs' to NULL upon visiting a closure with
@@ -134,8 +136,9 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
  [1]: Technically we should set 'rs' to `NULL | flip`.
  */
 #define SET_PROF_HDR(c,ccs_)            \
-        ((c)->header.prof.ccs = ccs_,   \
-        LDV_RECORD_CREATE((c)))
+        ((c)->header.prof.ccs = ccs_)
+
+        /* LDV_RECORD_CREATE((c))) */
 #else
 #define SET_PROF_HDR(c,ccs)
 #endif

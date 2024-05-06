@@ -12,6 +12,8 @@
 #include "PosixSource.h"
 #include "Rts.h"
 #include "sm/Storage.h"
+#include "Printer.h"
+#include "Stats.h"
 
 #include "TraverseHeap.h"
 
@@ -40,8 +42,6 @@
  * valid otherwise not (see isTravDataValid). We then invert the value of 'flip'
  * on each heap traversal (see traverseWorkStack), in effect marking all
  * closure's data as invalid at once.
- *
- * XXX Newly created closures must initialize the trav bit to 0.
  *
  * There are some complications with this approach, namely: static objects and
  * mutable data. There we do just go over all existing objects to reset the bit
@@ -701,11 +701,14 @@ static size_t openClosure (StgClosure *c, int cur_level) {
     fillSpaces(spaces, cur_level);
 
     fprintf (hp_file
-          , "%s %d {%s} {%s}: %lu\n"
+          , "%s %d %p %s {%s} {%s} {%lu}: %lu\n"
           , spaces
           , cur_level
+          , c_untagged
+          , closure_type_names[info->type]
           , GET_PROF_TYPE(info)
           , GET_PROF_DESC(info)
+          , (StgWord64) c_untagged->header.prof.ccs
           , cl_size);
     return cl_size;
 }
@@ -1306,6 +1309,18 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // Now we flip the flip bit.
     flip = flip ^ 1;
 
+    // Print the 4K blocks and megablocks and pinning info
+    // 4K pinned blocks utilization
+    // megablocks having pinned blocks and other blocks free
+    // XXX mark the closures using pinned memory as pinned
+    // XXX mark the static closures, filter based on mem addr.
+    // XXX filter out !isRetainer
+    // XXX Mark or filter out STATIC closures via option
+    // XXX record the thread-id of allocator along with gc-id
+    // XXX Filter based on thread-id
+    // XXX load trav/flip bit correctly, it does not work for static closures
+    fprintf (hp_file, "stats.gcs {%u}\n", getNumGcs());
+
     // c = Current closure                           (possibly tagged)
     // cp = Current closure's Parent                 (NOT tagged)
     // data = current closures' associated data      (NOT tagged)
@@ -1341,6 +1356,10 @@ inner_loop:
     case IND_STATIC:
         // We just skip IND_STATIC, so it's never visited.
         c = ((StgIndStatic *)c)->indirectee;
+        // XXX We are not increasing the cur_level here, so the entries
+        // corresponding to this may be confusing.
+        size_t cl_size = openClosure (c, cur_level);
+        cur_size += cl_size;
         goto inner_loop;
 
     case CONSTR_NOCAF:
