@@ -62,8 +62,8 @@ information about the retainers is still applicable.
 
 static uint32_t retainerGeneration;  // generation
 
-static uint32_t numObjectVisited;    // total number of objects visited
-static uint32_t timesAnyObjectVisited;  // number of times any objects are
+uint32_t numObjectVisited;    // total number of objects visited
+uint32_t timesAnyObjectVisited;  // number of times any objects are
                                         // visited
 
 /* -----------------------------------------------------------------------------
@@ -237,10 +237,13 @@ getRetainerFrom( StgClosure *c )
     ASSERT(isRetainer(c));
 
     // XXX
+    /*
     if (c->header.prof.ccs == NULL) {
-      // barf("ccs is NULL\n");
+      barf("ccs is NULL\n");
       return CCS_SYSTEM;
     } else return c->header.prof.ccs;
+    */
+    return c->header.prof.ccs;
 }
 
 /* -----------------------------------------------------------------------------

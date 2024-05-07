@@ -1296,6 +1296,9 @@ resetMutableObjects(void)
     }
 }
 
+extern uint32_t numObjectVisited;
+extern uint32_t timesAnyObjectVisited;
+
 /**
  * Traverse all closures on the traversal work-stack, calling 'visit_cb' on each
  * closure. See 'visitClosure_cb' for details. This function flips the 'flip'
@@ -1307,10 +1310,13 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
 {
     // first_child = first child of c
     StgClosure *c, *cp, *first_child;
+    StgClosure *c_untagged;
     stackData data, child_data;
     StgWord typeOfc;
     int cur_level = 0;
     size_t cur_size = 0;
+    uint32_t any = timesAnyObjectVisited;
+    uint32_t total = numObjectVisited;
 
     // Now we flip the flip bit.
     flip = flip ^ 1;
@@ -1319,12 +1325,15 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // 4K pinned blocks utilization
     // megablocks having pinned blocks and other blocks free
     // XXX mark the closures using pinned memory as pinned
-    // XXX mark the static closures, filter based on mem addr.
-    // XXX filter out !isRetainer
-    // XXX Mark or filter out STATIC closures via option
+    // XXX We need to report STATIC closures in the path to dynamic ones
+    // XXX filter out !isRetainer, if the type/desc/size are the same as
+    // previous level then use a refcount.
     // XXX record the thread-id of allocator along with gc-id
     // XXX Filter based on thread-id
     // XXX load trav/flip bit correctly, it does not work for static closures
+    // XXX Can static traversal lead to infinite loops or too much
+    // inefficiency?
+    // XXX Remove duplicate reporting of Handle/TextEncoding
     fprintf (hp_file, "stats.gcs: {%u}\n", getNumGcs());
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
@@ -1346,6 +1355,8 @@ loop:
         resetMutableObjects();
         fillSpaces(spaces, cur_level);
         fprintf (hp_file , "%s %d %lu\n", spaces, cur_level , cur_size);
+        fprintf (hp_file, "timesAnyObjectVisited: {%u}\n", timesAnyObjectVisited - any);
+        fprintf (hp_file, "numObjectVisited: {%u}\n", numObjectVisited - total);
         return;
     }
 inner_loop:
@@ -1366,11 +1377,15 @@ inner_loop:
     case IND_STATIC:
         // We just skip IND_STATIC, so it's never visited.
         c = ((StgIndStatic *)c)->indirectee;
+        c_untagged = UNTAG_CLOSURE(c);
         // XXX We are not increasing the cur_level here, so the entries
         // corresponding to this may be confusing.
-        if ((char *)(UNTAG_CLOSURE(c)) >= (char *)mblock_address_space.begin) {
-          size_t cl_size = openClosure (c, cur_level);
-          cur_size += cl_size;
+        if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+            bool first_visit1 = traverseIsFirstVisit(c_untagged);
+            if (first_visit1) {
+              size_t cl_size = openClosure (c, cur_level);
+              cur_size += cl_size;
+            }
         }
         goto inner_loop;
 
@@ -1532,7 +1547,11 @@ inner_loop:
     cp = c;
     c = first_child;
 
-    StgClosure *c_untagged;
+    // XXX Make a subroutine and pass first_visit to it so that we are forced
+    // to use first_visit, otherwise we may miss it in a new use of
+    // openClosure.
+    //
+    // XXX Test duplicate closures in the output by creating a hash table.
     c_untagged = UNTAG_CLOSURE(c);
     bool first_visit1 = traverseIsFirstVisit(c_untagged);
     if (first_visit1) {
