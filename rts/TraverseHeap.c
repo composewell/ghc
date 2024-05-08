@@ -682,34 +682,58 @@ popStackElement(traverseState *ts) {
 extern FILE *hp_file;
 extern size_t getClosureSize(const StgClosure *p);
 
+#define MAX_SPACES 100
+
 static void fillSpaces(char *spaces, int cur_level) {
     int i;
 
-    for (i=0; i < cur_level && i < 99; i++) {
+    for (i=0; i < cur_level && i < MAX_SPACES - 1; i++) {
       spaces[i] = ' ';
     }
     spaces[i] = '\0';
 }
 
-static size_t openClosure (StgClosure *c, int cur_level) {
+static void resetDupCount (int cur_level, int *dup_count) {
+    char spaces[MAX_SPACES];
+    if (*dup_count != 0) {
+      fillSpaces(spaces, cur_level-1);
+      fprintf (hp_file
+            , "%s %d ... + %d times \n"
+            , spaces
+            , cur_level - *dup_count
+            , *dup_count);
+      *dup_count = 0;
+    }
+}
+
+static size_t openClosure (StgClosure *c, int cur_level, StgClosure *cp, int *dup_count) {
     StgClosure *c_untagged;
     c_untagged = UNTAG_CLOSURE(c);
     size_t cl_size = getClosureSize(c_untagged);
-    char spaces[100];
+    char spaces[MAX_SPACES];
     const StgInfoTable *info = get_itbl(c_untagged);
+    const StgInfoTable *pinfo = get_itbl(UNTAG_CLOSURE(cp));
 
     fillSpaces(spaces, cur_level);
 
-    fprintf (hp_file
-          , "%s %d %p %s {%s} {%s} {%lu}: %lu\n"
-          , spaces
-          , cur_level
-          , c_untagged
-          , closure_type_names[info->type]
-          , GET_PROF_TYPE(info)
-          , GET_PROF_DESC(info)
-          , (StgWord64) c_untagged->header.prof.ccs
-          , cl_size);
+    // Compare size as well?
+    if (c != cp 
+        && strcmp(GET_PROF_TYPE(info), GET_PROF_TYPE(pinfo)) == 0
+        && strcmp(GET_PROF_DESC(info), GET_PROF_DESC(pinfo)) == 0) {
+        *dup_count = *dup_count + 1;
+    } else {
+      resetDupCount(cur_level, dup_count);
+      fprintf (hp_file
+            , "%s %d %p %s {%s} {%s} {%lu}: %lu\n"
+            , spaces
+            , cur_level
+            , c_untagged
+            , closure_type_names[info->type]
+            , GET_PROF_TYPE(info)
+            , GET_PROF_DESC(info)
+            , (StgWord64) c_untagged->header.prof.ccs
+            , cl_size);
+    }
     return cl_size;
 }
 
@@ -742,7 +766,7 @@ bool traverseIsFirstVisit(StgClosure *c);
  */
 STATIC_INLINE void
 traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
-    int *cur_level, size_t *cur_size)
+    int *cur_level, size_t *cur_size, int *dup_count)
 {
     stackElement *se;
 
@@ -781,7 +805,7 @@ begin:
         // se_done, we should not check any of the fields other than level and
         // size.
         if (se->se_done) {
-            char spaces[100];
+            char spaces[MAX_SPACES];
 
             fillSpaces(spaces, *cur_level);
             // This may be inconsistent as sometimes we save the
@@ -815,7 +839,7 @@ begin:
             bool first_visit = traverseIsFirstVisit(c_untagged);
             if (first_visit) {
               if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-                cl_size = openClosure (*c, *cur_level);
+                cl_size = openClosure (*c, *cur_level, *cp, dup_count);
                 *cur_size = *cur_size + cl_size;
               }
               return;
@@ -1010,16 +1034,17 @@ out:
     c_untagged = UNTAG_CLOSURE(*c);
     bool first_visit = traverseIsFirstVisit(c_untagged);
     if (first_visit) {
+      *cp = se->c;
+      *data = se->data;
+
       if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-        cl_size = openClosure(*c, *cur_level);
+        cl_size = openClosure(*c, *cur_level, *cp, dup_count);
         se->se_size += *cur_size + cl_size;
       } else {
+        resetDupCount(*cur_level, dup_count);
         se->se_size += *cur_size;
       }
       *cur_size = 0;
-
-      *cp = se->c;
-      *data = se->data;
     } else {
         /*
         const StgInfoTable *info = get_itbl(c_untagged);
@@ -1317,6 +1342,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     size_t cur_size = 0;
     uint32_t any = timesAnyObjectVisited;
     uint32_t total = numObjectVisited;
+    int dup_count = 0;
 
     // Now we flip the flip bit.
     flip = flip ^ 1;
@@ -1326,14 +1352,11 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // megablocks having pinned blocks and other blocks free
     // XXX mark the closures using pinned memory as pinned
     // XXX We need to report STATIC closures in the path to dynamic ones
-    // XXX filter out !isRetainer, if the type/desc/size are the same as
-    // previous level then use a refcount.
     // XXX record the thread-id of allocator along with gc-id
     // XXX Filter based on thread-id
     // XXX load trav/flip bit correctly, it does not work for static closures
     // XXX Can static traversal lead to infinite loops or too much
     // inefficiency?
-    // XXX Remove duplicate reporting of Handle/TextEncoding
     fprintf (hp_file, "stats.gcs: {%u}\n", getNumGcs());
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
@@ -1346,10 +1369,10 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // data_out = data to associate with current closure's children
 
 loop:
-    traversePop(ts, &c, &cp, &data, &cur_level, &cur_size);
+    traversePop(ts, &c, &cp, &data, &cur_level, &cur_size, &dup_count);
 
     if (c == NULL) {
-        char spaces[100];
+        char spaces[MAX_SPACES];
 
         debug("maxStackSize= %d\n", ts->maxStackSize);
         resetMutableObjects();
@@ -1383,9 +1406,11 @@ inner_loop:
         if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
             bool first_visit1 = traverseIsFirstVisit(c_untagged);
             if (first_visit1) {
-              size_t cl_size = openClosure (c, cur_level);
+              size_t cl_size = openClosure (c, cur_level, cp, &dup_count);
               cur_size += cl_size;
             }
+        } else {
+          resetDupCount(cur_level, &dup_count);
         }
         goto inner_loop;
 
@@ -1556,9 +1581,10 @@ inner_loop:
     bool first_visit1 = traverseIsFirstVisit(c_untagged);
     if (first_visit1) {
       cur_level = cur_level + 1;
-      if ((char *)(c_untagged) >= (char *)mblock_address_space.begin) {
-        cur_size = openClosure(c, cur_level);
+      if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+        cur_size = openClosure(c, cur_level, cp, &dup_count);
       } else {
+        resetDupCount(cur_level, &dup_count);
         cur_size = 0;
       }
       goto inner_loop;
