@@ -112,6 +112,8 @@ typedef struct stackElement_ {
     StgClosure *c;
     stackData data;
     int se_size;
+    int se_subtree_size;
+    int se_dup_count;
     int se_level;
     bool se_done;
 } stackElement;
@@ -361,22 +363,26 @@ traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp,
     se.se_level = level;
     se.se_done = false;
     se.se_size = 0;
+    se.se_subtree_size = 0;
+    se.se_dup_count = 0;
 
     pushStackElement(ts, se);
 };
 
 /* A dummy frame to indicate that a tree level is done */
 static inline void
-traversePushDone(int level, size_t cur_size, traverseState *ts) {
+traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level, size_t cur_size, traverseState *ts) {
     stackElement se;
 
-    se.c = NULL;
-    se.info.next.cp = NULL;
-    se.data.c_child_r = NULL;
-    se.info.type = 0;
+    se.c = c;
+    se.info.next.cp = cp;
+    se.data = data;
+    se.info.type = 0; // XXX ?
     se.se_level = level;
     se.se_done = true;
     se.se_size = cur_size;
+    se.se_subtree_size = 0;
+    se.se_dup_count = 0;
 
     pushStackElement(ts, se);
 };
@@ -403,24 +409,14 @@ traversePushDone(int level, size_t cur_size, traverseState *ts) {
  * representing all children onto the stack. See traversePop()
  */
 STATIC_INLINE void
-traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *c, stackData data, StgClosure **first_child)
+traversePushChildren(traverseState *ts, StgClosure *c, StgClosure **first_child)
 {
-    stackElement se;
+    stackElement *se = ts->stackTop;
 
     debug("traversePushChildren(): stackTop = 0x%x\n", ts->stackTop);
 
     ASSERT(get_itbl(c)->type != TSO);
     ASSERT(get_itbl(c)->type != AP_STACK);
-
-    //
-    // fill in se
-    //
-
-    se.c = c;
-    se.data = data;
-    se.se_level = level;
-    se.se_done = false;
-    se.se_size = cur_size;
 
     // fill in se.info
     switch (get_itbl(c)->type) {
@@ -436,21 +432,21 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
     case MUT_VAR_CLEAN:
     case MUT_VAR_DIRTY:
         *first_child = ((StgMutVar *)c)->var;
-        se.se_done = true;
+        se->se_done = true;
         goto out;
 
     case THUNK_SELECTOR:
         *first_child = ((StgSelector *)c)->selectee;
-        se.se_done = true;
+        se->se_done = true;
         goto out;
     case BLACKHOLE:
         *first_child = ((StgInd *)c)->indirectee;
-        se.se_done = true;
+        se->se_done = true;
         goto out;
     case CONSTR_1_0:
     case CONSTR_1_1:
         *first_child = c->payload[0];
-        se.se_done = true;
+        se->se_done = true;
         goto out;
 
         // For CONSTR_2_0 and MVAR, we use se.info.step to record the position
@@ -461,8 +457,8 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
         // need to push a stackElement, but nothing to store in se.info
     case CONSTR_2_0:
         *first_child = c->payload[0];         // return the first pointer
-        se.info.type = posTypeStep;
-        se.info.next.step = 2;            // 2 = second
+        se->info.type = posTypeStep;
+        se->info.next.step = 2;            // 2 = second
         break;
 
         // three children (fixed), no SRT
@@ -472,15 +468,15 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
         // head must be TSO and the head of a linked list of TSOs.
         // Shoule it be a child? Seems to be yes.
         *first_child = (StgClosure *)((StgMVar *)c)->head;
-        se.info.type = posTypeStep;
-        se.info.next.step = 2;            // 2 = second
+        se->info.type = posTypeStep;
+        se->info.next.step = 2;            // 2 = second
         break;
 
         // three children (fixed), no SRT
     case WEAK:
         *first_child = ((StgWeak *)c)->key;
-        se.info.type = posTypeStep;
-        se.info.next.step = 2;
+        se->info.type = posTypeStep;
+        se->info.next.step = 2;
         break;
 
         // layout.payload.ptrs, no SRT
@@ -490,9 +486,9 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
     case PRIM:
     case MUT_PRIM:
     case BCO:
-        init_ptrs(&se.info, get_itbl(c)->layout.payload.ptrs,
+        init_ptrs(&se->info, get_itbl(c)->layout.payload.ptrs,
                   (StgPtr)c->payload);
-        *first_child = find_ptrs(&se.info);
+        *first_child = find_ptrs(&se->info);
         if (*first_child == NULL)
             return;   // no child
         break;
@@ -502,9 +498,9 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
     case MUT_ARR_PTRS_DIRTY:
     case MUT_ARR_PTRS_FROZEN_CLEAN:
     case MUT_ARR_PTRS_FROZEN_DIRTY:
-        init_ptrs(&se.info, ((StgMutArrPtrs *)c)->ptrs,
+        init_ptrs(&se->info, ((StgMutArrPtrs *)c)->ptrs,
                   (StgPtr)(((StgMutArrPtrs *)c)->payload));
-        *first_child = find_ptrs(&se.info);
+        *first_child = find_ptrs(&se->info);
         if (*first_child == NULL)
             return;
         break;
@@ -514,9 +510,9 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
     case SMALL_MUT_ARR_PTRS_DIRTY:
     case SMALL_MUT_ARR_PTRS_FROZEN_CLEAN:
     case SMALL_MUT_ARR_PTRS_FROZEN_DIRTY:
-        init_ptrs(&se.info, ((StgSmallMutArrPtrs *)c)->ptrs,
+        init_ptrs(&se->info, ((StgSmallMutArrPtrs *)c)->ptrs,
                   (StgPtr)(((StgSmallMutArrPtrs *)c)->payload));
-        *first_child = find_ptrs(&se.info);
+        *first_child = find_ptrs(&se->info);
         if (*first_child == NULL)
             return;
         break;
@@ -525,8 +521,8 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
     case FUN_STATIC:
     case FUN:           // *c is a heap object.
     case FUN_2_0:
-        init_ptrs(&se.info, get_itbl(c)->layout.payload.ptrs, (StgPtr)c->payload);
-        *first_child = find_ptrs(&se.info);
+        init_ptrs(&se->info, get_itbl(c)->layout.payload.ptrs, (StgPtr)c->payload);
+        *first_child = find_ptrs(&se->info);
         if (*first_child == NULL)
             // no child from ptrs, so check SRT
             goto fun_srt_only;
@@ -534,9 +530,9 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
 
     case THUNK:
     case THUNK_2_0:
-        init_ptrs(&se.info, get_itbl(c)->layout.payload.ptrs,
+        init_ptrs(&se->info, get_itbl(c)->layout.payload.ptrs,
                   (StgPtr)((StgThunk *)c)->payload);
-        *first_child = find_ptrs(&se.info);
+        *first_child = find_ptrs(&se->info);
         if (*first_child == NULL)
             // no child from ptrs, so check SRT
             goto thunk_srt_only;
@@ -547,21 +543,21 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
     case FUN_1_1:
         *first_child = c->payload[0];
         ASSERT(*first_child != NULL);
-        init_srt_fun(&se.info, get_fun_itbl(c));
+        init_srt_fun(&se->info, get_fun_itbl(c));
         break;
 
     case THUNK_1_0:
     case THUNK_1_1:
         *first_child = ((StgThunk *)c)->payload[0];
         ASSERT(*first_child != NULL);
-        init_srt_thunk(&se.info, get_thunk_itbl(c));
+        init_srt_thunk(&se->info, get_thunk_itbl(c));
         break;
 
     case FUN_0_1:      // *c is a heap object.
     case FUN_0_2:
     fun_srt_only:
-        init_srt_fun(&se.info, get_fun_itbl(c));
-        *first_child = find_srt(&se.info);
+        init_srt_fun(&se->info, get_fun_itbl(c));
+        *first_child = find_srt(&se->info);
         if (*first_child == NULL)
             return;     // no child
         break;
@@ -573,16 +569,16 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
     case THUNK_0_1:
     case THUNK_0_2:
     thunk_srt_only:
-        init_srt_thunk(&se.info, get_thunk_itbl(c));
-        *first_child = find_srt(&se.info);
+        init_srt_thunk(&se->info, get_thunk_itbl(c));
+        *first_child = find_srt(&se->info);
         if (*first_child == NULL)
             return;     // no child
         break;
 
     case TREC_CHUNK:
         *first_child = (StgClosure *)((StgTRecChunk *)c)->prev_chunk;
-        se.info.type = posTypeStep;
-        se.info.next.step = 0;  // entry no.
+        se->info.type = posTypeStep;
+        se->info.next.step = 0;  // entry no.
         break;
 
         // cannot appear
@@ -611,9 +607,7 @@ traversePushChildren(int level, size_t cur_size, traverseState *ts, StgClosure *
 out:
     // se.info.next.cp has to be initialized when type==posTypeFresh. We don't
     // do that here though. So type must be !=posTypeFresh.
-    ASSERT(se.info.type != posTypeFresh);
-
-    pushStackElement(ts, se);
+    ASSERT(se->info.type != posTypeFresh);
 }
 
 /**
@@ -693,46 +687,47 @@ static void fillSpaces(char *spaces, int cur_level) {
     spaces[i] = '\0';
 }
 
-static void resetDupCount (int cur_level, int *dup_count) {
-    char spaces[MAX_SPACES];
-    if (*dup_count != 0) {
-      fillSpaces(spaces, cur_level-1);
-      fprintf (hp_file
-            , "%s %d ... + %d times \n"
-            , spaces
-            , cur_level - *dup_count
-            , *dup_count);
-      *dup_count = 0;
-    }
-}
-
-static size_t openClosure (StgClosure *c, int cur_level, StgClosure *cp, int *dup_count) {
+static size_t printNode (traverseState *ts, stackElement *se, int cur_level, size_t cur_size) {
     StgClosure *c_untagged;
-    c_untagged = UNTAG_CLOSURE(c);
-    size_t cl_size = getClosureSize(c_untagged);
+    c_untagged = UNTAG_CLOSURE(se->c);
+    size_t cl_size = 0;
     char spaces[MAX_SPACES];
     const StgInfoTable *info = get_itbl(c_untagged);
-    const StgInfoTable *pinfo = get_itbl(UNTAG_CLOSURE(cp));
+
+    if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+      cl_size = getClosureSize(c_untagged);
+    }
+
+    if (!isEmptyWorkStack(ts)) {
+      stackElement *se1 = ts->stackTop;
+      const StgInfoTable *info = get_itbl(c_untagged);
+      const StgInfoTable *pinfo = get_itbl(UNTAG_CLOSURE(se1->c));
+
+      // Compare size as well?
+      if (strcmp(GET_PROF_TYPE(info), GET_PROF_TYPE(pinfo)) == 0
+        && strcmp(GET_PROF_DESC(info), GET_PROF_DESC(pinfo)) == 0) {
+        se1->se_dup_count = se1->se_dup_count + se->se_dup_count + 1;
+        return cl_size;
+      }
+    }
 
     fillSpaces(spaces, cur_level);
-
-    // Compare size as well?
-    if (c != cp 
-        && strcmp(GET_PROF_TYPE(info), GET_PROF_TYPE(pinfo)) == 0
-        && strcmp(GET_PROF_DESC(info), GET_PROF_DESC(pinfo)) == 0) {
-        *dup_count = *dup_count + 1;
+    fprintf (hp_file
+          , "%s %d %p %s {%s} {%s} {%lu}: %lu"
+          , spaces
+          , cur_level
+          , c_untagged
+          , closure_type_names[info->type]
+          , GET_PROF_TYPE(info)
+          , GET_PROF_DESC(info)
+          , (StgWord64) c_untagged->header.prof.ccs
+          , cl_size);
+    if (se->se_dup_count > 0) {
+      fprintf (hp_file, " (x%d) [%lu]\n"
+              , (se->se_dup_count+1)
+              , cur_size);
     } else {
-      resetDupCount(cur_level, dup_count);
-      fprintf (hp_file
-            , "%s %d %p %s {%s} {%s} {%lu}: %lu\n"
-            , spaces
-            , cur_level
-            , c_untagged
-            , closure_type_names[info->type]
-            , GET_PROF_TYPE(info)
-            , GET_PROF_DESC(info)
-            , (StgWord64) c_untagged->header.prof.ccs
-            , cl_size);
+      fprintf (hp_file, " [%lu]\n", cur_size);
     }
     return cl_size;
 }
@@ -766,7 +761,7 @@ bool traverseIsFirstVisit(StgClosure *c);
  */
 STATIC_INLINE void
 traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
-    int *cur_level, size_t *cur_size, int *dup_count)
+    int *cur_level, size_t *cur_size)
 {
     stackElement *se;
 
@@ -805,21 +800,27 @@ begin:
         // se_done, we should not check any of the fields other than level and
         // size.
         if (se->se_done) {
-            char spaces[MAX_SPACES];
-
-            fillSpaces(spaces, *cur_level);
-            // This may be inconsistent as sometimes we save the
-            // cur_size in the stack top element for that level and
-            // sometimes in the bottommost element for that level.
-            // fprintf (hp_file, "%s %d total for subtree: %lu\n", spaces, *cur_level, *cur_size);
             popStackElement(ts);
             *cur_level = *cur_level - 1 ;
-            // cur_size is carried forward and aggregated in the parent
-            // This is the running total.
-            *cur_size = *cur_size + se->se_size;
             if (*cur_level < 0) {
               barf ("cur_level < 0\n");
             }
+
+            StgClosure *c_untagged;
+            c_untagged = UNTAG_CLOSURE(se->c);
+            if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+              cl_size = getClosureSize(c_untagged);
+              *cur_size = *cur_size + cl_size;
+            }
+
+            if (*cur_size > 0 || se->se_subtree_size > 0) {
+              printNode (ts, se, *cur_level, *cur_size + (size_t)se->se_subtree_size);
+            }
+
+            // cur_size is carried forward and aggregated in the parent
+            // This is the running total.
+            *cur_size = *cur_size + se->se_size;
+
             *c = NULL;
             continue;
         }
@@ -838,10 +839,6 @@ begin:
             c_untagged = UNTAG_CLOSURE(*c);
             bool first_visit = traverseIsFirstVisit(c_untagged);
             if (first_visit) {
-              if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-                cl_size = openClosure (*c, *cur_level, *cp, dup_count);
-                *cur_size = *cur_size + cl_size;
-              }
               return;
             } else {
               // some top level weak closures get added by stable ptrs
@@ -1037,13 +1034,8 @@ out:
       *cp = se->c;
       *data = se->data;
 
-      if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-        cl_size = openClosure(*c, *cur_level, *cp, dup_count);
-        se->se_size += *cur_size + cl_size;
-      } else {
-        resetDupCount(*cur_level, dup_count);
-        se->se_size += *cur_size;
-      }
+      se->se_size += *cur_size;
+      se->se_subtree_size += *cur_size;
       *cur_size = 0;
     } else {
         /*
@@ -1335,14 +1327,12 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
 {
     // first_child = first child of c
     StgClosure *c, *cp, *first_child;
-    StgClosure *c_untagged;
     stackData data, child_data;
     StgWord typeOfc;
     int cur_level = 0;
     size_t cur_size = 0;
     uint32_t any = timesAnyObjectVisited;
     uint32_t total = numObjectVisited;
-    int dup_count = 0;
 
     // Now we flip the flip bit.
     flip = flip ^ 1;
@@ -1369,7 +1359,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // data_out = data to associate with current closure's children
 
 loop:
-    traversePop(ts, &c, &cp, &data, &cur_level, &cur_size, &dup_count);
+    traversePop(ts, &c, &cp, &data, &cur_level, &cur_size);
 
     if (c == NULL) {
         char spaces[MAX_SPACES];
@@ -1385,6 +1375,16 @@ loop:
 inner_loop:
     c = UNTAG_CLOSURE(c);
 
+    // Some closures are added twice on the stack by the initialization code
+    // itself.  So we need to take care of that here.
+    StgClosure *c_untagged;
+    c_untagged = UNTAG_CLOSURE(c);
+    if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+      if (traverseIsFirstVisit(c_untagged) == 0) {
+        goto loop;
+      }
+    }
+
     typeOfc = get_itbl(c)->type;
 
     // special cases
@@ -1398,21 +1398,18 @@ inner_loop:
         break;
 
     case IND_STATIC:
+        cur_level = cur_level + 1;
+        traversePushDone(c, NULL, child_data, cur_level, cur_size, ts);
+        cur_size = 0;
+
         // We just skip IND_STATIC, so it's never visited.
         c = ((StgIndStatic *)c)->indirectee;
-        c_untagged = UNTAG_CLOSURE(c);
-        // XXX We are not increasing the cur_level here, so the entries
-        // corresponding to this may be confusing.
-        if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-            bool first_visit1 = traverseIsFirstVisit(c_untagged);
-            if (first_visit1) {
-              size_t cl_size = openClosure (c, cur_level, cp, &dup_count);
-              cur_size += cl_size;
-            }
+        bool first_visit1 = traverseIsFirstVisit(UNTAG_CLOSURE(c));
+        if (first_visit1) {
+          goto inner_loop;
         } else {
-          resetDupCount(cur_level, &dup_count);
+          goto loop;
         }
-        goto inner_loop;
 
     case CONSTR_NOCAF:
         // static objects with no pointers out, so goto loop.
@@ -1469,8 +1466,12 @@ inner_loop:
     bool first_visit = traverseMaybeInitClosureData(c);
     bool traverse_children
         = visit_cb(c, cp, data, first_visit, (stackData*)&child_data);
-    if(!traverse_children)
+    cur_level = cur_level + 1;
+    traversePushDone (c, cp, child_data, cur_level, cur_size, ts);
+    cur_size = 0;
+    if(!traverse_children) {
         goto loop;
+    }
 
     // process child
 
@@ -1481,10 +1482,6 @@ inner_loop:
     case STACK:
         // XXX ensure there is at least one actual frame between stackStart and
         // stackEnd.
-        // XXX This code block is common in all cases, factor it out.
-        cur_level = cur_level + 1;
-        traversePushDone (cur_level, cur_size, ts);
-        cur_size = 0;
         traversePushStack(cur_level, ts, c, child_data,
                     ((StgStack *)c)->sp,
                     ((StgStack *)c)->stack + ((StgStack *)c)->stack_size);
@@ -1494,12 +1491,6 @@ inner_loop:
     {
         StgTSO *tso = (StgTSO *)c;
 
-        cur_level = cur_level + 1;
-        // XXX Should save cur_size in the closure on stack top instead. so
-        // that it is incremented continuously. Printing intermediate node
-        // sizes will also work with that.
-        traversePushDone (cur_level, cur_size, ts);
-        cur_size = 0;
         traversePushClosure(cur_level, ts, (StgClosure *) tso->stackobj, c, child_data);
         traversePushClosure(cur_level, ts, (StgClosure *) tso->blocked_exceptions, c, child_data);
         traversePushClosure(cur_level, ts, (StgClosure *) tso->bq, c, child_data);
@@ -1517,9 +1508,6 @@ inner_loop:
     case BLOCKING_QUEUE:
     {
         StgBlockingQueue *bq = (StgBlockingQueue *)c;
-        cur_level = cur_level + 1;
-        traversePushDone (cur_level, cur_size, ts);
-        cur_size = 0;
         traversePushClosure(cur_level, ts, (StgClosure *) bq->link,  c, child_data);
         traversePushClosure(cur_level, ts, (StgClosure *) bq->bh,    c, child_data);
         traversePushClosure(cur_level, ts, (StgClosure *) bq->owner, c, child_data);
@@ -1529,9 +1517,6 @@ inner_loop:
     case PAP:
     {
         StgPAP *pap = (StgPAP *)c;
-        cur_level = cur_level + 1;
-        traversePushDone (cur_level, cur_size, ts);
-        cur_size = 0;
         traversePAP(cur_level, ts, c, child_data, pap->fun, pap->payload, pap->n_args);
         goto loop;
     }
@@ -1539,17 +1524,11 @@ inner_loop:
     case AP:
     {
         StgAP *ap = (StgAP *)c;
-        cur_level = cur_level + 1;
-        traversePushDone (cur_level, cur_size, ts);
-        cur_size = 0;
         traversePAP(cur_level, ts, c, child_data, ap->fun, ap->payload, ap->n_args);
         goto loop;
     }
 
     case AP_STACK:
-        cur_level = cur_level + 1;
-        traversePushDone (cur_level, cur_size, ts);
-        cur_size = 0;
         traversePushClosure(cur_level, ts, ((StgAP_STACK *)c)->fun, c, child_data);
         traversePushStack(cur_level, ts, c, child_data,
                     (StgPtr)((StgAP_STACK *)c)->payload,
@@ -1558,60 +1537,25 @@ inner_loop:
         goto loop;
     }
 
-    traversePushChildren(cur_level + 1, cur_size, ts, c, child_data, &first_child);
+    ts->stackTop->se_done = false;
+    traversePushChildren(ts, c, &first_child);
 
     // If first_child is null, c has no child.
     // If first_child is not null, the top stack element points to the next
     // object. traversePushChildren() may or may not push a stackElement on the
     // stack.
-    if (first_child == NULL)
+    if (first_child == NULL) {
+        ts->stackTop->se_done = true;
         goto loop;
+    }
 
+    // We have already pushed the stack entry in traversePushChildren
     // (c, cp, data) = (first_child, c, child_data)
     data = child_data;
     cp = c;
     c = first_child;
 
-    // XXX Make a subroutine and pass first_visit to it so that we are forced
-    // to use first_visit, otherwise we may miss it in a new use of
-    // openClosure.
-    //
-    // XXX Test duplicate closures in the output by creating a hash table.
-    c_untagged = UNTAG_CLOSURE(c);
-    bool first_visit1 = traverseIsFirstVisit(c_untagged);
-    if (first_visit1) {
-      cur_level = cur_level + 1;
-      if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-        cur_size = openClosure(c, cur_level, cp, &dup_count);
-      } else {
-        resetDupCount(cur_level, &dup_count);
-        cur_size = 0;
-      }
-      goto inner_loop;
-    } else {
-      /*
-        const StgInfoTable *info = get_itbl(c_untagged);
-        fprintf (stderr, "traverseWorkStack already visited: closure %p, flip %lu, level %d, type %s, desc %s\n"
-          , c_untagged
-          , flip
-          , cur_level
-          , GET_PROF_TYPE(info)
-          , GET_PROF_DESC(info));
-      */
-        // This does not work. Some processing in inner loop is still required
-        // even if c is already visited. Maybe something like IND_STATIC case
-        // which is not marked traversed?
-        /*
-        c = NULL; // not required but to be safe
-        cp = NULL; // not required but to be safe
-        goto loop;
-        */
-
-        cur_level = cur_level + 1;
-        //cur_size = openClosure(c, cur_level);
-        cur_size = 0;
-        goto inner_loop;
-    }
+    goto inner_loop;
 }
 
 /**
