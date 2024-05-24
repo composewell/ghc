@@ -1,9 +1,11 @@
 import Control.Concurrent
+import GHC.Stack
 
 main = do
     -- capabilities <- getNumCapabilities
     -- putStrLn $ "Number of capabilities: " ++ show capabilities
     print (f 30 + g 30)
+    errorWithStackTrace "hello"
 
     where
 

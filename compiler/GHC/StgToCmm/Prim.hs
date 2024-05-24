@@ -33,7 +33,7 @@ import GHC.StgToCmm.Monad
 import GHC.StgToCmm.Utils
 import GHC.StgToCmm.Ticky
 import GHC.StgToCmm.Heap
-import GHC.StgToCmm.Prof ( costCentreFrom )
+-- import GHC.StgToCmm.Prof ( costCentreFrom )
 
 import DynFlags
 import GHC.Platform
@@ -313,15 +313,19 @@ emitPrimOp dflags = \case
         [(baseExpr, AddrRep, AddrHint), ((CmmReg (CmmLocal tmp)), AddrRep, AddrHint)]
     emitAssign (CmmLocal res) (CmmReg (CmmLocal tmp))
 
-  GetCCSOfOp -> \[arg] -> opAllDone $ \[res] -> do
+  GetCCSOfOp -> \[_arg] -> opAllDone $ \[res] -> do
+  {-
     let
       val
        | gopt Opt_SccProfilingOn dflags = costCentreFrom dflags (cmmUntag dflags arg)
        | otherwise                      = CmmLit (zeroCLit dflags)
     emitAssign (CmmLocal res) val
+    -}
+    emitAssign (CmmLocal res) (CmmLit (zeroCLit dflags))
 
   GetCurrentCCSOp -> \[_] -> opAllDone $ \[res] -> do
-    emitAssign (CmmLocal res) cccsExpr
+    -- emitAssign (CmmLocal res) (CmmLit (mkCCostCentreStack dontCareCCS))
+    emitAssign (CmmLocal res) (CmmLit (zeroCLit dflags))
 
   MyThreadIdOp -> \[] -> opAllDone $ \[res] -> do
     emitAssign (CmmLocal res) currentTSOExpr
