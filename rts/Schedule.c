@@ -1541,13 +1541,14 @@ scheduleHandleThreadFinished (Capability *cap, Task *task, StgTSO *t)
  * -------------------------------------------------------------------------- */
 
 static bool profileOnce = true;
+static uint64_t gcReportFreq = 10;
 
 static bool
 scheduleNeedHeapProfile( bool ready_to_gc )
 {
     // When we have +RTS -i0 and we're heap profiling, do a census at
     // every GC.  This lets us get repeatable runs for debugging.
-    if (profileOnce == true && (performHeapProfile ||
+    if ((uint64_t)getNumGcs() % gcReportFreq == 0 && (performHeapProfile ||
         (RtsFlags.ProfFlags.heapProfileInterval==0 &&
          RtsFlags.ProfFlags.doHeapProfile && ready_to_gc))) {
         return true;

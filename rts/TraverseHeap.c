@@ -734,6 +734,35 @@ static size_t printNode (traverseState *ts, stackElement *se, int cur_level, siz
 
 bool traverseIsFirstVisit(StgClosure *c);
 
+static uint64_t gcDiffNewest = 10;
+static uint64_t gcDiffOldest = 20;
+static uint64_t gcAbsOldest = 10;
+
+enum ReportType {
+  GC_WINDOW,
+  GC_SINCE
+};
+
+static enum ReportType report = GC_WINDOW;
+
+static bool isOldClosure (StgClosure *c) {
+    uint64_t n = (uint64_t) getNumGcs();
+    uint64_t gcid = (StgWord64) c->header.prof.ccs;
+
+    switch (report) {
+      case GC_WINDOW:
+        return
+            (  n >= gcAbsOldest
+            && n >= gcDiffOldest
+            && gcid >= n - gcDiffOldest
+            && gcid <= n - gcDiffNewest
+            );
+      case GC_SINCE:
+        return (n >= gcAbsOldest);
+      default: barf("isOldClosure: unhandled report type\n");
+    }
+}
+
 /**
  *  Finds the next object to be considered for retainer profiling and store
  *  its pointer to *c.
@@ -808,7 +837,8 @@ begin:
 
             StgClosure *c_untagged;
             c_untagged = UNTAG_CLOSURE(se->c);
-            if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+            if ((char *)c_untagged >= (char *)mblock_address_space.begin
+                && isOldClosure (c_untagged)) {
               cl_size = getClosureSize(c_untagged);
               *cur_size = *cur_size + cl_size;
             }
@@ -1333,10 +1363,15 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     size_t cur_size = 0;
     uint32_t any = timesAnyObjectVisited;
     uint32_t total = numObjectVisited;
+    uint64_t curGc = (uint64_t) getNumGcs();
 
     // Now we flip the flip bit.
     flip = flip ^ 1;
 
+    // XXX This should be checked by the CLI
+    if (gcDiffNewest > gcDiffOldest) {
+      gcDiffNewest = gcDiffOldest;
+    }
     // Print the 4K blocks and megablocks and pinning info
     // 4K pinned blocks utilization
     // megablocks having pinned blocks and other blocks free
@@ -1347,7 +1382,12 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // XXX load trav/flip bit correctly, it does not work for static closures
     // XXX Can static traversal lead to infinite loops or too much
     // inefficiency?
-    fprintf (hp_file, "stats.gcs: {%u}\n", getNumGcs());
+    if(curGc >= gcDiffOldest) {
+      fprintf (hp_file, "gcids: current {%lu}, window [%lu, %lu]\n"
+            , curGc, curGc - gcDiffOldest, curGc - gcDiffNewest);
+    } else {
+      fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
+    }
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);
