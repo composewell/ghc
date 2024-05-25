@@ -1346,6 +1346,29 @@ resetMutableObjects(void)
 extern uint32_t numObjectVisited;
 extern uint32_t timesAnyObjectVisited;
 
+static void getMemUsage(void) {
+    FILE *file;
+    char buffer[100];
+    char *filename = "/proc/self/statm";
+
+    file = fopen(filename, "r");
+    if (file == NULL) {
+        perror("Error opening /proc/self/statm");
+        return;
+    }
+
+    // XXX VmData and VmStk can be reported separately using /proc/self/stat.
+    // Also using the stack start address and current stack pointer we can find
+    // the current resident stack size.
+    if (fgets(buffer, sizeof(buffer), file) != NULL) {
+        fprintf(hp_file, "VmSize,VmRss,RssFile,VmExe,_,VmData+VmStk,_:\n%s", buffer);
+    } else {
+        perror("Error reading /proc/self/statm");
+    }
+
+    fclose(file);
+}
+
 /**
  * Traverse all closures on the traversal work-stack, calling 'visit_cb' on each
  * closure. See 'visitClosure_cb' for details. This function flips the 'flip'
@@ -1391,6 +1414,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     } else {
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }
+    getMemUsage();
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);
