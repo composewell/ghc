@@ -1382,6 +1382,9 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // XXX load trav/flip bit correctly, it does not work for static closures
     // XXX Can static traversal lead to infinite loops or too much
     // inefficiency?
+    //
+    // if we are reporting heap profile the GC is forced to be a major
+    // GC.
     if(curGc >= gcDiffOldest) {
       fprintf (hp_file, "gcids: current {%lu}, window [%lu, %lu]\n"
             , curGc, curGc - gcDiffOldest, curGc - gcDiffNewest);

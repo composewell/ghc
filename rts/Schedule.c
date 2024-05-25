@@ -1541,6 +1541,8 @@ scheduleHandleThreadFinished (Capability *cap, Task *task, StgTSO *t)
  * -------------------------------------------------------------------------- */
 
 static bool profileOnce = true;
+// Note that if we are reporting heap profile the GC is forced to be a major
+// GC.
 static uint64_t gcReportFreq = 10;
 
 static bool

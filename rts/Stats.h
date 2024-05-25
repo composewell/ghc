@@ -45,7 +45,7 @@ void      stat_endNonmovingGcSync(void);
 void      stat_startNonmovingGc (void);
 void      stat_endNonmovingGc (void);
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void      stat_startRP(void);
 void      stat_endRP(uint32_t, int, double);
 #endif /* PROFILING */
