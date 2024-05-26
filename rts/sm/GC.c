@@ -908,22 +908,6 @@ GarbageCollect (uint32_t collect_gen,
   // be *after* the major GC; it's now running concurrently.
   IF_DEBUG(sanity, checkSanity(true /* after GC */, major_gc && !RtsFlags.GcFlags.useNonmoving));
 
-  // If a heap census is due, we need to do it before
-  // resurrectThreads(), for the same reason as checkSanity above:
-  // resurrectThreads() will overwrite some closures and leave slop
-  // behind.
-  if (do_heap_census) {
-      debugTrace(DEBUG_sched, "performing heap census");
-      RELEASE_SM_LOCK;
-      heapCensus(mut_time);
-      ACQUIRE_SM_LOCK;
-  }
-
-  // send exceptions to any threads which were about to die
-  RELEASE_SM_LOCK;
-  resurrectThreads(resurrected_threads);
-  ACQUIRE_SM_LOCK;
-
   if (major_gc) {
       W_ need_prealloc, need_live, need, got;
       uint32_t i;
@@ -978,6 +962,33 @@ GarbageCollect (uint32_t collect_gen,
   // extra GC trace info
   IF_DEBUG(gc, statDescribeGens());
 
+  // ok, GC over: tell the stats department what happened.
+  stat_endGCWorker(cap, gct);
+  stat_endGC(cap, gct, live_words, copied,
+             live_blocks * BLOCK_SIZE_W - live_words /* slop */,
+             N, n_gc_threads, gc_threads,
+             par_max_copied, par_balanced_copied,
+             gc_spin_spin, gc_spin_yield, mut_spin_spin, mut_spin_yield,
+             any_work, no_work, scav_find_work);
+
+  // mem-x-ray depends on the updated gc stats. So heap census must be done
+  // after stat updation.
+  // If a heap census is due, we need to do it before
+  // resurrectThreads(), for the same reason as checkSanity above:
+  // resurrectThreads() will overwrite some closures and leave slop
+  // behind.
+  if (do_heap_census) {
+      debugTrace(DEBUG_sched, "performing heap census");
+      RELEASE_SM_LOCK;
+      heapCensus(mut_time);
+      ACQUIRE_SM_LOCK;
+  }
+
+  // send exceptions to any threads which were about to die
+  RELEASE_SM_LOCK;
+  resurrectThreads(resurrected_threads);
+  ACQUIRE_SM_LOCK;
+
 #if defined(DEBUG)
   // symbol-table based profiling
   /*  heapCensus(to_blocks); */ /* ToDo */
@@ -994,15 +1005,6 @@ GarbageCollect (uint32_t collect_gen,
   // check for memory leaks if DEBUG is on
   memInventory(DEBUG_gc);
 #endif
-
-  // ok, GC over: tell the stats department what happened.
-  stat_endGCWorker(cap, gct);
-  stat_endGC(cap, gct, live_words, copied,
-             live_blocks * BLOCK_SIZE_W - live_words /* slop */,
-             N, n_gc_threads, gc_threads,
-             par_max_copied, par_balanced_copied,
-             gc_spin_spin, gc_spin_yield, mut_spin_spin, mut_spin_yield,
-             any_work, no_work, scav_find_work);
 
 #if defined(RTS_USER_SIGNALS)
   if (RtsFlags.MiscFlags.install_signal_handlers) {

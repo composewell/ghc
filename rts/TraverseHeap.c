@@ -746,19 +746,20 @@ enum ReportType {
 static enum ReportType report = GC_WINDOW;
 
 static bool isOldClosure (StgClosure *c) {
-    uint64_t n = (uint64_t) getNumGcs();
+    // We increment the stats before heap traversal.
+    uint64_t curGC = (uint64_t) getNumGcs() - 1;
     uint64_t gcid = (StgWord64) c->header.prof.ccs;
 
     switch (report) {
       case GC_WINDOW:
         return
-            (  n >= gcAbsOldest
-            && n >= gcDiffOldest
-            && gcid >= n - gcDiffOldest
-            && gcid <= n - gcDiffNewest
+            (  curGC >= gcAbsOldest
+            && curGC >= gcDiffOldest
+            && gcid >= curGC - gcDiffOldest
+            && gcid <= curGC - gcDiffNewest
             );
       case GC_SINCE:
-        return (n >= gcAbsOldest);
+        return (curGC >= gcAbsOldest);
       default: barf("isOldClosure: unhandled report type\n");
     }
 }
@@ -1360,8 +1361,11 @@ static void getMemUsage(void) {
     // XXX VmData and VmStk can be reported separately using /proc/self/stat.
     // Also using the stack start address and current stack pointer we can find
     // the current resident stack size.
+    // Foreign memory allocations will show up in C heap in VmRss.
+    // Any mmaps by the program will also show up in VmRss.
+    // XXX How is VmStk reported in case of multiple threads?
     if (fgets(buffer, sizeof(buffer), file) != NULL) {
-        fprintf(hp_file, "VmSize,VmRss,RssFile,VmExe,_,VmData+VmStk,_:\n%s", buffer);
+        fprintf(hp_file, "VmSize,VmRss,RssFile,VmExe,_,VmData+VmStk,_:%s", buffer);
     } else {
         perror("Error reading /proc/self/statm");
     }
@@ -1386,7 +1390,8 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     size_t cur_size = 0;
     uint32_t any = timesAnyObjectVisited;
     uint32_t total = numObjectVisited;
-    uint64_t curGc = (uint64_t) getNumGcs();
+    // We increment the stats before heap traversal.
+    uint64_t curGc = (uint64_t) getNumGcs() - 1;
 
     // Now we flip the flip bit.
     flip = flip ^ 1;
@@ -1415,6 +1420,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }
     getMemUsage();
+    getGCStats();
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);

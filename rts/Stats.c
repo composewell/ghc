@@ -1751,6 +1751,16 @@ uint32_t getNumGcs(void)
     return stats.gcs;
 }
 
+void getGCStats(void) {
+    fprintf(hp_file, "live bytes (total,large,compact,slop):%lu,%lu,%lu,%lu\n"
+          , stats.gc.live_bytes
+          , stats.gc.large_objects_bytes
+          , stats.gc.compact_bytes
+          , stats.gc.slop_bytes);
+    fprintf(hp_file, "total mega blocks in bytes:%lu\n"
+          , stats.gc.mem_in_use_bytes);
+}
+
 /* -----------------------------------------------------------------------------
    Dumping stuff in the stats file, or via the debug message interface
    -------------------------------------------------------------------------- */
