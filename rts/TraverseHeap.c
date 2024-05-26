@@ -111,7 +111,17 @@ typedef struct stackElement_ {
     stackPos info;
     StgClosure *c;
     stackData data;
-    int se_size;
+    // We traverse all the children of a node before we print the node. We do
+    // this so that we can decide to print or not print the node based on
+    // whether we are printing any of the children. We may not print any
+    // children if they do not pass the filtering criteria, in that case we
+    // want to skip printing the node as well.
+    //
+    // When traversing we keep the aggregate size of all the children of
+    // the node in se_subtree_size. When we start traversing a child we save
+    // the parent's se_subtree_size in se_parent_size so that we can use
+    // se_subtree_size for the children of the current node.
+    int se_parent_size;
     int se_subtree_size;
     int se_dup_count;
     int se_level;
@@ -362,7 +372,7 @@ traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp,
     se.info.type = posTypeFresh;
     se.se_level = level;
     se.se_done = false;
-    se.se_size = 0;
+    se.se_parent_size = 0;
     se.se_subtree_size = 0;
     se.se_dup_count = 0;
 
@@ -380,7 +390,7 @@ traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level, size_
     se.info.type = 0; // XXX ?
     se.se_level = level;
     se.se_done = true;
-    se.se_size = cur_size;
+    se.se_parent_size = cur_size;
     se.se_subtree_size = 0;
     se.se_dup_count = 0;
 
@@ -865,7 +875,7 @@ begin:
 
             // cur_size is carried forward and aggregated in the parent
             // This is the running total.
-            *cur_size = *cur_size + se->se_size;
+            *cur_size = *cur_size + se->se_parent_size;
 
             *c = NULL;
             continue;
@@ -877,8 +887,8 @@ begin:
             *c = se->c;
             *data = se->data;
             popStackElement(ts);
-            if (se->se_size != 0) {
-              barf ("se_size != 0 for a fresh node");
+            if (se->se_parent_size != 0) {
+              barf ("se_parent_size != 0 for a fresh node");
             }
 
             StgClosure *c_untagged;
@@ -1081,7 +1091,7 @@ out:
       *cp = se->c;
       *data = se->data;
 
-      se->se_size += *cur_size;
+      se->se_parent_size += *cur_size;
       se->se_subtree_size += *cur_size;
       *cur_size = 0;
     } else {
