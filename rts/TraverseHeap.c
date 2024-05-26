@@ -687,7 +687,7 @@ static void fillSpaces(char *spaces, int cur_level) {
     spaces[i] = '\0';
 }
 
-static size_t printNode (traverseState *ts, stackElement *se, int cur_level, size_t cur_size) {
+static size_t printNode (bool first_visit, traverseState *ts, stackElement *se, int cur_level, size_t cur_size) {
     StgClosure *c_untagged;
     c_untagged = UNTAG_CLOSURE(se->c);
     size_t cl_size = 0;
@@ -713,21 +713,25 @@ static size_t printNode (traverseState *ts, stackElement *se, int cur_level, siz
 
     fillSpaces(spaces, cur_level);
     fprintf (hp_file
-          , "%s%d %p %s {%s} {%s} {%lu}: %lu"
+          , "%s%d %p %s {%s} {%s} {%lu}:"
           , spaces
           , cur_level
           , c_untagged
           , closure_type_names[info->type]
           , GET_PROF_TYPE(info)
           , GET_PROF_DESC(info)
-          , (StgWord64) c_untagged->header.prof.ccs
-          , cl_size);
-    if (se->se_dup_count > 0) {
-      fprintf (hp_file, " (x%d) [%lu]\n"
-              , (se->se_dup_count+1)
-              , cur_size);
+          , (StgWord64) c_untagged->header.prof.ccs);
+    if (first_visit) {
+      if (se->se_dup_count > 0) {
+        fprintf (hp_file, " %lu (x%d) [%lu]\n"
+                , cl_size
+                , (se->se_dup_count+1)
+                , cur_size);
+      } else {
+        fprintf (hp_file, " %lu [%lu]\n", cl_size, cur_size);
+      }
     } else {
-      fprintf (hp_file, " [%lu]\n", cur_size);
+      fprintf (hp_file, " (revisit)\n");
     }
     return cl_size;
 }
@@ -801,7 +805,7 @@ static bool isOldClosure (StgClosure *c) {
  */
 STATIC_INLINE void
 traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
-    int *cur_level, size_t *cur_size)
+    int *cur_level, size_t *cur_size, stackElement **pse)
 {
     stackElement *se;
 
@@ -830,6 +834,7 @@ begin:
         // accompanied by a popStackElement() otherwise this is an infinite
         // loop.
         se = ts->stackTop;
+        *pse = se;
 
         if (*cur_level != se->se_level) {
           fprintf (stderr, "cur_level = %d, se_level = %d\n", *cur_level, se->se_level);
@@ -855,7 +860,7 @@ begin:
             }
 
             if (*cur_size > 0 || se->se_subtree_size > 0) {
-              printNode (ts, se, *cur_level, *cur_size + (size_t)se->se_subtree_size);
+              printNode (true, ts, se, *cur_level, *cur_size + (size_t)se->se_subtree_size);
             }
 
             // cur_size is carried forward and aggregated in the parent
@@ -893,6 +898,7 @@ begin:
                 , GET_PROF_TYPE(info)
                 , GET_PROF_DESC(info));
               */
+              printNode (false, ts, se, *cur_level, *cur_size + (size_t)se->se_subtree_size);
               *c = NULL;
               continue;
             }
@@ -1088,6 +1094,7 @@ out:
           , GET_PROF_TYPE(info)
           , GET_PROF_DESC(info));
         */
+        printNode (false, ts, se, *cur_level, *cur_size + (size_t)se->se_subtree_size);
         goto begin;
     }
 
@@ -1403,6 +1410,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     uint32_t total = numObjectVisited;
     // We increment the stats before heap traversal.
     uint64_t curGc = (uint64_t) getNumGcs() - 1;
+    stackElement *se;
 
     // Now we flip the flip bit.
     flip = flip ^ 1;
@@ -1443,7 +1451,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // data_out = data to associate with current closure's children
 
 loop:
-    traversePop(ts, &c, &cp, &data, &cur_level, &cur_size);
+    traversePop(ts, &c, &cp, &data, &cur_level, &cur_size, &se);
 
     if (c == NULL) {
 
@@ -1468,6 +1476,7 @@ inner_loop:
     c_untagged = UNTAG_CLOSURE(c);
     if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
       if (traverseIsFirstVisit(c_untagged) == 0) {
+        printNode (false, ts, se, cur_level, cur_size + (size_t)se->se_subtree_size);
         goto loop;
       }
     }
@@ -1495,6 +1504,8 @@ inner_loop:
         if (first_visit1) {
           goto inner_loop;
         } else {
+          // XXX do not print if static
+          printNode (false, ts, se, cur_level, cur_size + (size_t)se->se_subtree_size);
           goto loop;
         }
 
