@@ -697,34 +697,44 @@ static void fillSpaces(char *spaces, int cur_level) {
     spaces[i] = '\0';
 }
 
-static size_t printNode (bool first_visit, traverseState *ts, stackElement *se, int cur_level, size_t cur_size) {
+// The size in square brackets [count] includes the size of the current node
+// and all its children.
+//
+// CAUTION: modifies the ts->stackTop->se_dup_count.
+static void printNode (bool first_visit, traverseState *ts, stackElement *se, int cur_level, size_t cur_size) {
     StgClosure *c_untagged;
     c_untagged = UNTAG_CLOSURE(se->c);
-    size_t cl_size = 0;
+    size_t cl_size;
     char spaces[MAX_SPACES];
     const StgInfoTable *info = get_itbl(c_untagged);
+    bool cl_static = false;
 
-    if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-      cl_size = getClosureSize(c_untagged);
+    if ((char *)c_untagged < (char *)mblock_address_space.begin) {
+      cl_static = true;
     }
 
-    if (!first_visit && cl_size == 0) {
-      return cl_size;
+    if (!first_visit && cl_static == true) {
+      return;
     }
 
-    if (!isEmptyWorkStack(ts)) {
+    cl_size = getClosureSize(c_untagged);
+    if (!isEmptyWorkStack(ts) && first_visit) {
       stackElement *se1 = ts->stackTop;
       const StgInfoTable *info = get_itbl(c_untagged);
       const StgInfoTable *pinfo = get_itbl(UNTAG_CLOSURE(se1->c));
 
-      // Compare size as well?
       if (strcmp(GET_PROF_TYPE(info), GET_PROF_TYPE(pinfo)) == 0
-        && strcmp(GET_PROF_DESC(info), GET_PROF_DESC(pinfo)) == 0) {
+        && strcmp(GET_PROF_DESC(info), GET_PROF_DESC(pinfo)) == 0
+        && getClosureSize(UNTAG_CLOSURE(se1->c)) == cl_size) {
         se1->se_dup_count = se1->se_dup_count + se->se_dup_count + 1;
-        return cl_size;
+        return;
       }
     }
 
+    // We print the static closure size as 0 because we do not account it.
+    if (cl_static == true) {
+      cl_size = 0;
+    }
     fillSpaces(spaces, cur_level);
     fprintf (hp_file
           , "%s%d %p %s {%s} {%s} {%lu}:"
@@ -747,7 +757,7 @@ static size_t printNode (bool first_visit, traverseState *ts, stackElement *se, 
     } else {
       fprintf (hp_file, " (revisit)\n");
     }
-    return cl_size;
+    return;
 }
 
 bool traverseIsFirstVisit(StgClosure *c);
