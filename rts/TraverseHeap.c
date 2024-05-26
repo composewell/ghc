@@ -708,6 +708,10 @@ static size_t printNode (bool first_visit, traverseState *ts, stackElement *se, 
       cl_size = getClosureSize(c_untagged);
     }
 
+    if (!first_visit && cl_size == 0) {
+      return cl_size;
+    }
+
     if (!isEmptyWorkStack(ts)) {
       stackElement *se1 = ts->stackTop;
       const StgInfoTable *info = get_itbl(c_untagged);
