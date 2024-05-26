@@ -713,7 +713,7 @@ static size_t printNode (traverseState *ts, stackElement *se, int cur_level, siz
 
     fillSpaces(spaces, cur_level);
     fprintf (hp_file
-          , "%s %d %p %s {%s} {%s} {%lu}: %lu"
+          , "%s%d %p %s {%s} {%s} {%lu}: %lu"
           , spaces
           , cur_level
           , c_untagged
@@ -734,6 +734,15 @@ static size_t printNode (traverseState *ts, stackElement *se, int cur_level, siz
 
 bool traverseIsFirstVisit(StgClosure *c);
 
+// XXX Frequency of doing the profile should be related to the window size.
+// Such that we are checking a window of particular size and in the next check
+// we slide past that.
+// XXX We can also implement traversing only those objects which were
+// created/mutated since the last check, using gcid to identify the
+// creation generation. If an object is old it's entire subtree check
+// can be avoided.
+// XXX We can also implement generational gc at a finer granularity using gcid
+// as the generation.
 static uint64_t gcDiffNewest = 10;
 static uint64_t gcDiffOldest = 20;
 static uint64_t gcAbsOldest = 10;
@@ -753,13 +762,14 @@ static bool isOldClosure (StgClosure *c) {
     switch (report) {
       case GC_WINDOW:
         return
-            (  curGC >= gcAbsOldest
-            && curGC >= gcDiffOldest
-            && gcid >= curGC - gcDiffOldest
+            (  gcid >= curGC - gcDiffOldest
             && gcid <= curGC - gcDiffNewest
             );
       case GC_SINCE:
-        return (curGC >= gcAbsOldest);
+        return
+            (  curGC >= gcAbsOldest
+            && gcid <= curGC - gcDiffNewest
+            );
       default: barf("isOldClosure: unhandled report type\n");
     }
 }
@@ -1388,6 +1398,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     StgWord typeOfc;
     int cur_level = 0;
     size_t cur_size = 0;
+    // XXX these can overflow, we should reset them every time.
     uint32_t any = timesAnyObjectVisited;
     uint32_t total = numObjectVisited;
     // We increment the stats before heap traversal.
@@ -1435,14 +1446,17 @@ loop:
     traversePop(ts, &c, &cp, &data, &cur_level, &cur_size);
 
     if (c == NULL) {
-        char spaces[MAX_SPACES];
 
         debug("maxStackSize= %d\n", ts->maxStackSize);
         resetMutableObjects();
-        fillSpaces(spaces, cur_level);
-        fprintf (hp_file , "%s %d %lu\n", spaces, cur_level , cur_size);
-        fprintf (hp_file, "timesAnyObjectVisited: {%u}\n", timesAnyObjectVisited - any);
-        fprintf (hp_file, "numObjectVisited: {%u}\n", numObjectVisited - total);
+
+        fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
+        fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
+        fprintf (hp_file, "total bytes: %lu (%lu words)\n"
+              , cur_size * sizeof(W_), cur_size);
+        if (cur_level != 0) {
+          barf("Traversal loop ended at cur_level: %d\n", cur_level);
+        }
         return;
     }
 inner_loop:
