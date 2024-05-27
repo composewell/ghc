@@ -1543,20 +1543,37 @@ scheduleHandleThreadFinished (Capability *cap, Task *task, StgTSO *t)
 static bool profileOnce = true;
 // Note that if we are reporting heap profile the GC is forced to be a major
 // GC.
-static uint64_t gcReportFreq = 10;
+enum profileType {
+  PROFILE_ON_GCID,
+  PROFILE_ON_TICK
+};
+
+static enum profileType profType = PROFILE_ON_GCID;
 
 static bool
 scheduleNeedHeapProfile( bool ready_to_gc )
 {
     // When we have +RTS -i0 and we're heap profiling, do a census at
     // every GC.  This lets us get repeatable runs for debugging.
-    if ((uint64_t)getNumGcs() % gcReportFreq == 0 && (performHeapProfile ||
-        (RtsFlags.ProfFlags.heapProfileInterval==0 &&
-         RtsFlags.ProfFlags.doHeapProfile && ready_to_gc))) {
-        return true;
-    } else {
-        return false;
+    if (RtsFlags.ProfFlags.doHeapProfile && ready_to_gc) {
+      switch (profType) {
+        case PROFILE_ON_GCID:
+          if (profileOnce || RtsFlags.ProfFlags.heapProfileInterval == 0 ||
+              ((uint64_t)getNumGcs() % RtsFlags.ProfFlags.heapProfileInterval) == 0) {
+                return true;
+          }
+          break;
+        case PROFILE_ON_TICK:
+          if (RtsFlags.ProfFlags.heapProfileInterval == 0 ||
+              performHeapProfile) {
+                return true;
+          }
+          break;
+        default: barf("Unkown profile type: %d\n", profType);
+      }
     }
+
+    return false;
 }
 
 /* -----------------------------------------------------------------------------
