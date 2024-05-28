@@ -204,6 +204,7 @@ void initRtsFlagsDefaults(void)
 
     RtsFlags.ProfFlags.doHeapProfile      = false;
     RtsFlags.ProfFlags.heapProfileInterval = USToTime(100000); // 100ms
+    RtsFlags.ProfFlags.heapProfileIntervalTicks = 0;
 
 #if defined(GC_PROFILING)
     RtsFlags.ProfFlags.includeTSOs        = false;
@@ -1344,8 +1345,12 @@ error = true;
                 if (rts_argv[arg][2] == '\0') {
                   /* use default */
                 } else {
+                    RtsFlags.ProfFlags.heapProfileIntervalTicks =
+                        atof(rts_argv[arg]+2);
+                    /*
                     RtsFlags.ProfFlags.heapProfileInterval =
                         fsecondsToTime(atof(rts_argv[arg]+2));
+                    */
                 }
                 break;
 
@@ -1719,6 +1724,7 @@ static void normaliseRtsOpts (void)
         RtsFlags.ConcFlags.ctxtSwitchTicks = 0;
     }
 
+    /*
     if (RtsFlags.ProfFlags.heapProfileInterval > 0) {
         RtsFlags.ProfFlags.heapProfileIntervalTicks =
             RtsFlags.ProfFlags.heapProfileInterval /
@@ -1726,6 +1732,7 @@ static void normaliseRtsOpts (void)
     } else {
         RtsFlags.ProfFlags.heapProfileIntervalTicks = 0;
     }
+    */
 
     if (RtsFlags.GcFlags.stkChunkBufferSize >
         RtsFlags.GcFlags.stkChunkSize / 2) {

@@ -1555,14 +1555,15 @@ scheduleNeedHeapProfile( bool ready_to_gc )
 {
     // When we have +RTS -i0 and we're heap profiling, do a census at
     // every GC.  This lets us get repeatable runs for debugging.
+
     if (RtsFlags.ProfFlags.doHeapProfile && ready_to_gc) {
+      uint64_t numGgs = getNumGcs();
+      uint64_t gcFreq = RtsFlags.ProfFlags.heapProfileIntervalTicks;
+      bool triggerViaInterval = gcFreq > 0 && (numGgs % gcFreq == 0);
       switch (profType) {
         case PROFILE_ON_GCID:
-          if (profileOnce || RtsFlags.ProfFlags.heapProfileInterval == 0 ||
-              ((uint64_t)getNumGcs() % RtsFlags.ProfFlags.heapProfileInterval) == 0) {
-                return true;
-          }
-          break;
+            return ((profileOnce && gcFreq == 0) || triggerViaInterval);
+            break;
         case PROFILE_ON_TICK:
           if (RtsFlags.ProfFlags.heapProfileInterval == 0 ||
               performHeapProfile) {
