@@ -2925,6 +2925,12 @@ primop  ThreadCPUTimeOp "threadCPUTime#" GenPrimOp
    out_of_line = True
    has_side_effects = True
 
+primop  TriggerProfOp "triggerProf#" GenPrimOp
+   State# RealWorld -> State# RealWorld
+   with
+   out_of_line = True
+   has_side_effects = True
+
 ------------------------------------------------------------------------
 section "Weak pointers"
 ------------------------------------------------------------------------

@@ -1501,6 +1501,7 @@ emitPrimOp dflags = \case
   NoDuplicateOp -> alwaysExternal
   ThreadStatusOp -> alwaysExternal
   ThreadCPUTimeOp -> alwaysExternal
+  TriggerProfOp -> alwaysExternal
   MkWeakOp -> alwaysExternal
   MkWeakNoFinalizerOp -> alwaysExternal
   AddCFinalizerToWeakOp -> alwaysExternal

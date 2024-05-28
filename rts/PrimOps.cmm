@@ -1141,6 +1141,12 @@ stg_threadCPUTimezh (/* no args */)
     return (sec_res, nsec_res, cur_allocated_res, count_thread_sched_out);
 }
 
+stg_triggerProfzh (/* no args */)
+{
+    ccall triggerProf();
+    return ();
+}
+
 /* -----------------------------------------------------------------------------
  * TVar primitives
  * -------------------------------------------------------------------------- */

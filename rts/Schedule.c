@@ -1540,7 +1540,13 @@ scheduleHandleThreadFinished (Capability *cap, Task *task, StgTSO *t)
  * Perform a heap census
  * -------------------------------------------------------------------------- */
 
-static bool profileOnce = true;
+static bool profileOnce = false;
+
+void triggerProf()
+{
+    profileOnce = true;
+}
+
 // Note that if we are reporting heap profile the GC is forced to be a major
 // GC.
 enum profileType {
