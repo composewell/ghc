@@ -1346,7 +1346,7 @@ error = true;
                   /* use default */
                 } else {
                     RtsFlags.ProfFlags.heapProfileIntervalTicks =
-                        atof(rts_argv[arg]+2);
+                        atoi(rts_argv[arg]+2);
                     /*
                     RtsFlags.ProfFlags.heapProfileInterval =
                         fsecondsToTime(atof(rts_argv[arg]+2));
