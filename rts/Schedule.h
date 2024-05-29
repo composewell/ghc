@@ -32,7 +32,10 @@ void updateThreadCPUTimePostPrim
      StgInt64 *cur_nsec_res,
      StgInt32 *cur_allocated_res);
 
-void triggerProf();
+void triggerProf( StgWord8 reportGcType
+                , StgWord64 gcDNewest
+                , StgWord64 gcDOldest
+                , StgWord64 gcAOldest);
 
 // Place a new thread on the run queue of the current Capability
 void scheduleThread (Capability *cap, StgTSO *tso);

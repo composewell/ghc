@@ -75,6 +75,8 @@
 #include <asm/unistd.h>
 #endif
 
+#include "TraverseHeap.h"
+
 /* -----------------------------------------------------------------------------
  * Global variables
  * -------------------------------------------------------------------------- */
@@ -1542,8 +1544,23 @@ scheduleHandleThreadFinished (Capability *cap, Task *task, StgTSO *t)
 
 static bool profileOnce = false;
 
-void triggerProf()
+void triggerProf( StgWord8 reportGcType
+                , StgWord64 gcDNewest
+                , StgWord64 gcDOldest
+                , StgWord64 gcAOldest)
 {
+#if defined(GC_PROFILING)
+    if (reportGcType == 0) {
+        report = GC_SINCE;
+    } else {
+        report = GC_WINDOW;
+    }
+    // XXX Is there a way to manually specify coercion?
+    // Int to Unsigned Int should be fine?
+    gcDiffNewest = gcDNewest;
+    gcDiffOldest = gcDOldest;
+    gcAbsOldest = gcAOldest;
+#endif
     profileOnce = true;
 }
 

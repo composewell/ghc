@@ -2926,7 +2926,7 @@ primop  ThreadCPUTimeOp "threadCPUTime#" GenPrimOp
    has_side_effects = True
 
 primop  TriggerProfOp "triggerProf#" GenPrimOp
-   State# RealWorld -> State# RealWorld
+   Word8# -> WORD64 -> WORD64 -> WORD64 -> State# RealWorld -> State# RealWorld
    with
    out_of_line = True
    has_side_effects = True

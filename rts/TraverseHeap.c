@@ -771,16 +771,19 @@ bool traverseIsFirstVisit(StgClosure *c);
 // can be avoided.
 // XXX We can also implement generational gc at a finer granularity using gcid
 // as the generation.
-static uint64_t gcDiffNewest = 10;
-static uint64_t gcDiffOldest = 20;
-static uint64_t gcAbsOldest = 10;
+uint64_t gcDiffNewest = 10;
+uint64_t gcDiffOldest = 20;
+uint64_t gcAbsOldest = 10;
+enum ReportType report = GC_WINDOW;
 
-enum ReportType {
-  GC_WINDOW,
-  GC_SINCE
-};
-
-static enum ReportType report = GC_WINDOW;
+const char* stringifyReportType(enum ReportType rep)
+{
+   switch (rep)
+   {
+      case GC_SINCE: return "GC_SINCE";
+      case GC_WINDOW: return "GC_WINDOW";
+   }
+}
 
 static bool isOldClosure (StgClosure *c) {
     // We increment the stats before heap traversal.
@@ -1457,6 +1460,10 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // if we are reporting heap profile the GC is forced to be a major
     // GC.
     if(curGc >= gcDiffOldest) {
+      fprintf ( hp_file
+              , "state: report %s, dNewest %lu, dOldest %lu, aOldest %lu\n"
+              , stringifyReportType(report), gcDiffNewest
+              , gcDiffOldest, gcAbsOldest);
       fprintf (hp_file, "gcids: current {%lu}, window [%lu, %lu]\n"
             , curGc, curGc - gcDiffOldest, curGc - gcDiffNewest);
     } else {

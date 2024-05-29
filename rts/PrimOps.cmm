@@ -1141,9 +1141,9 @@ stg_threadCPUTimezh (/* no args */)
     return (sec_res, nsec_res, cur_allocated_res, count_thread_sched_out);
 }
 
-stg_triggerProfzh (/* no args */)
+stg_triggerProfzh ( I8 reportGcType, I64 gcDNewest, I64 gcDOldest, I64 gcAOldest )
 {
-    ccall triggerProf();
+    ccall triggerProf(reportGcType, gcDNewest, gcDOldest, gcAOldest);
     return ();
 }
 

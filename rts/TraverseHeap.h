@@ -16,6 +16,22 @@
 
 #include "BeginPrivate.h"
 
+// -----------------------------------------------------------------------------
+// -- Prof reporting options
+// -----------------------------------------------------------------------------
+
+enum ReportType {
+  GC_WINDOW,
+  GC_SINCE
+};
+
+extern uint64_t gcDiffNewest;
+extern uint64_t gcDiffOldest;
+extern uint64_t gcAbsOldest;
+extern enum ReportType report;
+
+// -----------------------------------------------------------------------------
+
 void resetStaticObjectForProfiling(StgClosure *static_objects);
 
 /* See Note [Profiling heap traversal visited bit]. */
