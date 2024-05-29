@@ -702,6 +702,12 @@ static void fillSpaces(char *spaces, int cur_level) {
 //
 // CAUTION: modifies the ts->stackTop->se_dup_count.
 static void printNode (bool first_visit, traverseState *ts, stackElement *se, int cur_level, size_t cur_size) {
+
+    bool shouldReportRevisit = false;
+    if (!first_visit && !shouldReportRevisit) {
+        return;
+    }
+
     StgClosure *c_untagged;
     c_untagged = UNTAG_CLOSURE(se->c);
     size_t cl_size;
