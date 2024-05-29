@@ -795,7 +795,7 @@ static bool isOldClosure (StgClosure *c) {
             );
       case GC_SINCE:
         return
-            (  curGC >= gcAbsOldest
+            (  gcid >= gcAbsOldest
             && gcid <= curGC - gcDiffNewest
             );
       default: barf("isOldClosure: unhandled report type\n");
