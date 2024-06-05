@@ -150,7 +150,7 @@ scheduleFinalizers(Capability *cap, StgWeak *list)
     arr = (StgMutArrPtrs *)allocate(cap, sizeofW(StgMutArrPtrs) + size);
     TICK_ALLOC_PRIM(sizeofW(StgMutArrPtrs), n, 0);
     // No write barrier needed here; this array is only going to referred to by this core.
-    SET_HDR(arr, &stg_MUT_ARR_PTRS_FROZEN_CLEAN_info, CCS_SYSTEM);
+    SET_HDR(arr, &stg_MUT_ARR_PTRS_FROZEN_CLEAN_info, (uint64_t)getNumGcs());
     arr->ptrs = n;
     arr->size = size;
 

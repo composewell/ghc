@@ -143,6 +143,8 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
 #define SET_PROF_HDR(c,ccs)
 #endif
 
+// XXX Review all the places where SET_HDR* are called. We should not be
+// setting CCS for existing closures.
 #define SET_HDR(c,_info,ccs)                            \
    {                                                    \
         SET_PROF_HDR((StgClosure *)(c),ccs);            \

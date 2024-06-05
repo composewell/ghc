@@ -1573,6 +1573,9 @@ enum profileType {
 
 static enum profileType profType = PROFILE_ON_GCID;
 
+// XXX Trigger dump if live-bytes exceeds a specified limit.
+// If live-bytes rate of increase is more than specified value.
+// If live bytes increases by certain percentage from the initial stable value.
 static bool
 scheduleNeedHeapProfile( bool ready_to_gc )
 {

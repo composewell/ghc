@@ -182,6 +182,13 @@ stackSqueeze(Capability *cap, StgTSO *tso, StgPtr bottom)
     }
 }
 
+#ifdef GC_PROFILING
+#define SET_GC_ID(c) \
+    (((StgClosure *)(c))->header.prof.ccs) = (uint64_t) getNumGcs()
+#else
+#define SET_GC_ID(c)
+#endif
+
 /* -----------------------------------------------------------------------------
  * Pausing a thread
  *
@@ -357,8 +364,9 @@ threadPaused(Capability *cap, StgTSO *tso)
             // .. and we need a write barrier, since we just mutated the closure:
             recordClosureMutated(cap,bh);
 
-            // We pretend that bh has just been created.
+            //tWe pretend that bh has just been created.
             LDV_RECORD_CREATE(bh);
+            SET_GC_ID(bh);
 
             frame = (StgClosure *) ((StgUpdateFrame *)frame + 1);
             if (prev_was_update_frame) {

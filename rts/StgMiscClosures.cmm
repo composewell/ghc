@@ -283,6 +283,13 @@ INFO_TABLE(stg_IND_STATIC,1,0,IND_STATIC,"IND_STATIC","IND_STATIC")
    waiting for the evaluation of the closure to finish.
    ------------------------------------------------------------------------- */
 
+#ifdef GC_PROFILING
+#define SET_GC_ID(c) \
+    StgHeader_ccs(c) = CCCS
+#else
+#define SET_GC_ID(c)
+#endif
+
 INFO_TABLE(stg_BLACKHOLE,1,0,BLACKHOLE,"BLACKHOLE","BLACKHOLE")
     (P_ node)
 {
@@ -317,7 +324,8 @@ retry:
 
         MessageBlackHole_tso(msg) = CurrentTSO;
         MessageBlackHole_bh(msg) = node;
-        SET_HDR(msg, stg_MSG_BLACKHOLE_info, CCS_SYSTEM);
+        // XXX should we set CCS here?
+        SET_HDR(msg, stg_MSG_BLACKHOLE_info, CCCS);
         // messageBlackHole has appropriate memory barriers when this object is exposed.
         // See Note [Heap memory barriers].
 

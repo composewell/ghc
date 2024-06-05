@@ -232,6 +232,7 @@ StgMutArrPtrs *heap_view_closurePtrs(Capability *cap, StgClosure *closure) {
     StgMutArrPtrs *arr =
         (StgMutArrPtrs *)allocate(cap, sizeofW(StgMutArrPtrs) + size);
     TICK_ALLOC_PRIM(sizeofW(StgMutArrPtrs), nptrs, 0);
+    // XXX set proper CCCS?
     SET_HDR(arr, &stg_MUT_ARR_PTRS_FROZEN_CLEAN_info, cap->r.rCCCS);
     arr->ptrs = nptrs;
     arr->size = size;

@@ -1207,6 +1207,10 @@ unchain_thunk_selectors(StgSelector *p, StgClosure *val)
         // For the purposes of LDV profiling, we have created an
         // indirection.
         LDV_RECORD_CREATE(p);
+#ifdef GC_PROFILING
+        // Do we need to set gc-id here?
+        //(((StgClosure *)(p))->header.prof.ccs) = 0;
+#endif
 
         p = prev;
     }

@@ -205,7 +205,7 @@ throwTo (Capability *cap,       // the Capability we hold
 
     msg = (MessageThrowTo *) allocate(cap, sizeofW(MessageThrowTo));
     // the message starts locked; see below
-    SET_HDR(msg, &stg_WHITEHOLE_info, CCS_SYSTEM);
+    SET_HDR(msg, &stg_WHITEHOLE_info, (uint64_t)getNumGcs());
     msg->source      = source;
     msg->target      = target;
     msg->exception   = exception;
@@ -215,7 +215,7 @@ throwTo (Capability *cap,       // the Capability we hold
     case THROWTO_SUCCESS:
         // unlock the message now, otherwise we leave a WHITEHOLE in
         // the heap (#6103)
-        SET_HDR(msg, &stg_MSG_THROWTO_info, CCS_SYSTEM);
+        SET_HDR(msg, &stg_MSG_THROWTO_info, (uint64_t)getNumGcs());
         return NULL;
 
     case THROWTO_BLOCKED:
