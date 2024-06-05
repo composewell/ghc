@@ -297,7 +297,9 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
     // (c, cp, r, s, R_r) is available, so compute the retainer set for *c.
     if (retainerSetOfc == NULL) {
         if (!first_visit) {
-          barf ("not first_visit but retainerSetOfc NULL\n");
+          // barf ("not first_visit but retainerSetOfc NULL\n");
+          fprintf(stderr, "[BARF] not first_visit but retainerSetOfc NULL\n");
+          return 0;
         }
         // This is the first visit to *c.
         numObjectVisited++;
