@@ -697,6 +697,8 @@ static void fillSpaces(char *spaces, int cur_level) {
     spaces[i] = '\0';
 }
 
+static bool collapseDuplicates = 1;
+
 // The size in square brackets [count] includes the size of the current node
 // and all its children.
 //
@@ -724,7 +726,7 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se, in
     }
 
     cl_size = getClosureSize(c_untagged);
-    if (!isEmptyWorkStack(ts) && first_visit) {
+    if (collapseDuplicates && !isEmptyWorkStack(ts) && first_visit) {
       stackElement *se1 = ts->stackTop;
       const StgInfoTable *info = get_itbl(c_untagged);
       const StgInfoTable *pinfo = get_itbl(UNTAG_CLOSURE(se1->c));
