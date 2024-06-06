@@ -753,15 +753,16 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se, in
           , GET_PROF_TYPE(info)
           , GET_PROF_DESC(info)
           , (StgWord64) c_untagged->header.prof.ccs);
+    if (se->se_dup_count > 0) {
+      fprintf (hp_file, " %lu (x%d) [%lu]"
+              , cl_size
+              , (se->se_dup_count+1)
+              , cur_size);
+    } else {
+      fprintf (hp_file, " %lu [%lu]", cl_size, cur_size);
+    }
     if (first_visit) {
-      if (se->se_dup_count > 0) {
-        fprintf (hp_file, " %lu (x%d) [%lu]\n"
-                , cl_size
-                , (se->se_dup_count+1)
-                , cur_size);
-      } else {
-        fprintf (hp_file, " %lu [%lu]\n", cl_size, cur_size);
-      }
+      fprintf (hp_file, "\n");
     } else {
       fprintf (hp_file, " (revisit)\n");
     }
