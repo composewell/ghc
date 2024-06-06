@@ -1477,6 +1477,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     } else {
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }
+    fprintf (hp_file, "flip: {%lu}\n" , flip);
     getMemUsage();
     getGCStats();
     /*
