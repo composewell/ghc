@@ -94,7 +94,7 @@ cgTopRhsClosure dflags rec id ccs upd_flag args body =
     = do
          cg_info <- getCgIdInfo f
          let closure_rep   = mkStaticClosureFields dflags
-                                    indStaticInfoTable ccs MayHaveCafRefs
+                                    indStaticInfoTable 040404040404 MayHaveCafRefs
                                     [unLit (idInfoToAmode cg_info)]
          emitDataLits closure_label closure_rep
          return ()

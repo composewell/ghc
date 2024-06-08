@@ -74,10 +74,11 @@ costCentreFrom :: DynFlags
 costCentreFrom dflags cl = CmmLoad (cmmOffsetB dflags cl (oFFSET_StgHeader_ccs dflags)) (ccsType dflags)
 
 -- | The profiling header words in a static closure
-staticProfHdr :: DynFlags -> CostCentreStack -> [CmmLit]
+staticProfHdr :: DynFlags -> Integer -> [CmmLit]
 staticProfHdr dflags ccs
  -- = ifProfilingL dflags [mkCCostCentreStack dontCareCCS, staticLdvInit dflags]
- = ifProfilingL dflags [CmmInt 1010101010101 W64, staticLdvInit dflags]
+ -- = ifProfilingL dflags [CmmInt 1010101010101 W64, staticLdvInit dflags]
+ = ifProfilingL dflags [CmmInt ccs W64, staticLdvInit dflags]
 
 -- ccs is cccsExpr - which is CCCS register.
 -- | Profiling header words in a dynamic closure
