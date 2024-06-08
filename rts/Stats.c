@@ -1761,6 +1761,11 @@ void getGCStats(void) {
           , stats.gc.mem_in_use_bytes);
 }
 
+void liveDiff(size_t bytes) {
+    fprintf(hp_file, "live bytes diff: %ld\n",
+          stats.gc.live_bytes - bytes);
+}
+
 /* -----------------------------------------------------------------------------
    Dumping stuff in the stats file, or via the debug message interface
    -------------------------------------------------------------------------- */

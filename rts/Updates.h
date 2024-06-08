@@ -39,11 +39,20 @@
                  PROF_HDR_FIELDS(w_,ccs,p2)              \
                  p_ updatee
 
+// XXX Use this in updateWithIndirection CMM version
 #ifdef GC_PROFILING
 #define SET_GC_ID(c) \
     StgHeader_ccs(c) = 0;
 #else
 #define SET_GC_ID(c)
+#endif
+
+// XXX Use this in updateWithIndirection CMM version
+#ifdef GC_PROFILING
+#define SET_FLIP_BIT(c) \
+    StgHeader_ldvw(c) = 1;
+#else
+#define SET_FLIP_BIT(c)
 #endif
 /*
  * Getting the memory barriers correct here is quite tricky. Essentially

@@ -698,6 +698,7 @@ static void fillSpaces(char *spaces, int cur_level) {
 }
 
 static bool collapseDuplicates = 1;
+// XXX Report maximum, average object size, and histogram
 
 // The size in square brackets [count] includes the size of the current node
 // and all its children.
@@ -1503,6 +1504,7 @@ loop:
         fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
         fprintf (hp_file, "total bytes: %lu (%lu words)\n"
               , cur_size * sizeof(W_), cur_size);
+        liveDiff(cur_size * sizeof(W_));
         if (cur_level != 0) {
           barf("Traversal loop ended at cur_level: %d\n", cur_level);
         }

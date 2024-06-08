@@ -380,7 +380,7 @@ loadEra dflags =
              (bWord dflags)
 -}
 loadEra dflags = CmmMachOp (MO_UU_Conv (cIntWidth dflags) (wordWidth dflags))
-    [CmmLoad (mkLblExpr (mkRtsCmmDataLabel (fsLit "era")))
+    [CmmLoad (mkLblExpr (mkRtsCmmDataLabel (fsLit "flip")))
              (cInt dflags)]
 
 ldvWord :: DynFlags -> CmmExpr -> CmmExpr

@@ -184,7 +184,8 @@ stackSqueeze(Capability *cap, StgTSO *tso, StgPtr bottom)
 
 #ifdef GC_PROFILING
 #define SET_GC_ID(c) \
-    (((StgClosure *)(c))->header.prof.ccs) = (uint64_t) getNumGcs()
+    (((StgClosure *)(c))->header.prof.ccs) = (uint64_t) getNumGcs();\
+    (((StgClosure *)(c))->header.prof.hp.trav.lsb) = flip;
 #else
 #define SET_GC_ID(c)
 #endif

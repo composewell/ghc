@@ -36,6 +36,7 @@ doneWithMsgThrowTo (Capability *cap, MessageThrowTo *m)
     }
     OVERWRITING_CLOSURE((StgClosure*)m);
     unlockClosure((StgClosure*)m, &stg_MSG_NULL_info);
+    // XXX set gc-id here?
     LDV_RECORD_CREATE(m);
 }
 

@@ -136,9 +136,8 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
  [1]: Technically we should set 'rs' to `NULL | flip`.
  */
 #define SET_PROF_HDR(c,ccs_)            \
-        ((c)->header.prof.ccs = ccs_)
-
-        /* LDV_RECORD_CREATE((c))) */
+        ((c)->header.prof.ccs = ccs_);   \
+        LDV_RECORD_CREATE((c))
 #else
 #define SET_PROF_HDR(c,ccs)
 #endif
@@ -166,6 +165,9 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
     OVERWRITING_CLOSURE((StgClosure *)(c));                     \
     SET_INFO((StgClosure *)(c), (new_info));
 
+// GC-ID profiling does not need this as the old visit bit is valid. And we do
+// not need to change the era, that's gc-id for us. If we want to change gc-id
+// on overwriting then we have to change the ccs field.
     /*LDV_RECORD_CREATE(c);*/
 
 /* -----------------------------------------------------------------------------

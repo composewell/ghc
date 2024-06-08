@@ -13,7 +13,7 @@
 
 #pragma once
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 /* retrieves the LDV word from closure c */
 #define LDVW(c)                 (((StgClosure *)(c))->header.prof.hp.ldvw)
@@ -30,10 +30,17 @@
 
 #if defined(CMINUSMINUS)
 
+// XXX need for this case as well.
+
 #else
 
+// XXX Fix the type/header inclusions
+//#include "TraverseHeap.h"
+//extern StgWord flip;
+extern uint64_t flip;
+
 #define LDV_RECORD_CREATE(c)   \
-  LDVW((c)) = ((StgWord)RTS_DEREF(era) << LDV_SHIFT) | LDV_STATE_CREATE
+  LDVW((c)) = flip
 
 #endif
 
