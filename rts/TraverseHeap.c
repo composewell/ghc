@@ -1429,6 +1429,92 @@ static void getMemUsage(void) {
     fclose(file);
 }
 
+enum parseState {
+    findRss,
+    findAnon,
+    findVmFlags,
+    findHeader
+};
+
+static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
+    FILE *file;
+    char buffer[4096];
+    char header[4096];
+    char *filename = "/proc/self/smaps";
+    char *rss = "Rss:";
+    size_t rssLen = strlen(rss);
+    char *anon = "Anonymous:";
+    size_t anonLen = strlen(anon);
+    char *vmflags = "VmFlags:";
+    size_t vmfLen = strlen(vmflags);
+    enum parseState state = findHeader;
+    size_t rssKb;
+    size_t total_rss = 0;
+    size_t total_anon = 0;
+    bool print_anon = true;
+
+    file = fopen(filename, "r");
+    if (file == NULL) {
+        perror("Error opening /proc/self/smaps");
+        return;
+    }
+
+    // XXX handle error
+    // XXX Print in sorted order
+    // XXX We are reading line by line, the maps might change while we are
+    // reading. For better results we should read the entire file in one go and
+    // then process.
+    while (fgets(buffer, sizeof(buffer), file)) {
+        switch (state) {
+            case findHeader:
+                strncpy (header, buffer, sizeof(header));
+                state = findRss;
+                continue;
+            case findRss:
+                if (strncmp(buffer, rss, rssLen) == 0) {
+                    strtok(buffer, " ");
+                    rssKb = atoll(strtok(NULL, " "));
+                    if (rssKb > 0) {
+                        total_rss += rssKb;
+                        if (verbose && rssKb >= threshold_rss_kb) {
+                            fprintf(hp_file, "%s", header);
+                            fprintf(hp_file, "Rss: %lu kB\n", rssKb);
+                            print_anon = true;
+                        } else {
+                            print_anon = false;
+                        }
+                        state = findAnon;
+                    } else {
+                        state = findVmFlags;
+                    }
+                }
+                continue;
+            case findAnon:
+                if (strncmp(buffer, anon, anonLen) == 0) {
+                    strtok(buffer, " ");
+                    rssKb = atoll(strtok(NULL, " "));
+                    total_anon += rssKb;
+                    if (print_anon) {
+                        fprintf(hp_file, "Anonymous: %lu kB\n", rssKb);
+                    }
+                    state = findVmFlags;
+                }
+                continue;
+            case findVmFlags:
+                if (strncmp(buffer, vmflags, vmfLen) == 0) {
+                    state = findHeader;
+                }
+                continue;
+            default: barf ("getMemMpas: illegal state\n");
+        }
+    }
+
+    fprintf(hp_file, "Total Rss: %lu kB\n", total_rss);
+    fprintf(hp_file, " File: %lu kB\n", total_rss - total_anon);
+    fprintf(hp_file, " Anonymous: %lu kB\n", total_anon);
+    fclose(file);
+}
+
 /**
  * Traverse all closures on the traversal work-stack, calling 'visit_cb' on each
  * closure. See 'visitClosure_cb' for details. This function flips the 'flip'
@@ -1450,6 +1536,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // We increment the stats before heap traversal.
     uint64_t curGc = (uint64_t) getNumGcs() - 1;
     stackElement *se;
+    bool verbose = false;
 
     // Now we flip the flip bit.
     flip = flip ^ 1;
@@ -1482,8 +1569,11 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }
     fprintf (hp_file, "flip: {%lu}\n" , flip);
-    getGCStats(false);
-    getMemUsage();
+    getGCStats(verbose);
+    getMemMaps(verbose, 256);
+    if (verbose) {
+        getMemUsage();
+    }
     fprintf(hp_file, "---------Haskell Heap Details-----------\n");
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
