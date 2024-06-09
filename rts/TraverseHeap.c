@@ -699,6 +699,7 @@ static void fillSpaces(char *spaces, int cur_level) {
 
 static bool collapseDuplicates = 1;
 // XXX Report maximum, average object size, and histogram
+// XXX Report arrays and other large object types separately
 
 // The size in square brackets [count] includes the size of the current node
 // and all its children.
@@ -786,12 +787,13 @@ uint64_t gcDiffOldest = 20;
 uint64_t gcAbsOldest = 10;
 enum ReportType report = GC_WINDOW;
 
-const char* stringifyReportType(enum ReportType rep)
+static const char* stringifyReportType(enum ReportType rep)
 {
    switch (rep)
    {
       case GC_SINCE: return "GC_SINCE";
       case GC_WINDOW: return "GC_WINDOW";
+      default: barf ("stringifyReportType: invalid report type\n");
    }
 }
 
@@ -1419,7 +1421,7 @@ static void getMemUsage(void) {
     // Any mmaps by the program will also show up in VmRss.
     // XXX How is VmStk reported in case of multiple threads?
     if (fgets(buffer, sizeof(buffer), file) != NULL) {
-        fprintf(hp_file, "VmSize,VmRss,RssFile,VmExe,_,VmData+VmStk,_:%s", buffer);
+        fprintf(hp_file, "VmSize,VmRss,RssFile,VmExe,_,VmData+VmStk,_ (pages):\n\t%s", buffer);
     } else {
         perror("Error reading /proc/self/statm");
     }
@@ -1480,8 +1482,9 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }
     fprintf (hp_file, "flip: {%lu}\n" , flip);
+    getGCStats(false);
     getMemUsage();
-    getGCStats();
+    fprintf(hp_file, "---------Haskell Heap Details-----------\n");
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);

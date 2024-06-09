@@ -1751,18 +1751,157 @@ uint32_t getNumGcs(void)
     return stats.gcs;
 }
 
-void getGCStats(void) {
-    fprintf(hp_file, "live bytes (total,large,compact,slop):%lu,%lu,%lu,%lu\n"
-          , stats.gc.live_bytes
-          , stats.gc.large_objects_bytes
-          , stats.gc.compact_bytes
-          , stats.gc.slop_bytes);
-    fprintf(hp_file, "total mega blocks in bytes:%lu\n"
-          , stats.gc.mem_in_use_bytes);
+void getGCStats(bool verbose)
+{
+  uint32_t g, lge, compacts, i, tot_lge, tot_compacts;
+  //uint32_t mut;
+  W_ gen_live_words, gen_slop_words, gen_gcthread_words;
+  W_ tot_live_words, tot_slop_words, tot_reg_words, tot_large_words;
+  W_ gen_blocks, gen_gcthread_blocks;
+  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks;
+  bdescr *bd;
+  generation *gen;
+
+  tot_live_words = 0;
+  tot_slop_words = 0;
+  tot_reg_words = 0;
+  tot_large_words = 0;
+  tot_reg_blocks = 0;
+  tot_large_blocks = 0;
+  tot_compact_blocks = 0;
+  tot_lge = 0;
+  tot_compacts = 0;
+
+  fprintf(hp_file, "---------Haskell Heap Summary-----------\n");
+  for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
+      gen = &generations[g];
+
+      for (bd = gen->large_objects, lge = 0; bd; bd = bd->link) {
+          lge++;
+      }
+
+      for (bd = gen->compact_objects, compacts = 0; bd; bd = bd->link) {
+          compacts++;
+      }
+
+      gen_live_words = genLiveWords(gen);
+      gen_blocks = genLiveBlocks(gen);
+
+      //mut = 0;
+      gen_gcthread_blocks = 0;
+      gen_gcthread_words = 0;
+      for (i = 0; i < n_capabilities; i++) {
+          //mut += countOccupied(capabilities[i]->mut_lists[g]);
+
+          // Add the pinned object block.
+          /*
+          bd = capabilities[i]->pinned_object_block;
+          if (bd != NULL) {
+              gen_live_words   += bd->free - bd->start;
+              gen_blocks += bd->blocks;
+          }
+          */
+
+          gen_gcthread_words += gcThreadLiveWords(i,g);
+          gen_gcthread_blocks += gcThreadLiveBlocks(i,g);
+      }
+
+      gen_live_words += gen_gcthread_words;
+      gen_blocks += gen_gcthread_blocks;
+      gen_slop_words = gen_blocks * BLOCK_SIZE_W - gen_live_words;
+
+      tot_live_words += gen_live_words;
+      tot_slop_words += gen_slop_words;
+      tot_reg_words += gen->n_words + gen_gcthread_words;
+      tot_large_words += gen->n_large_words;
+
+      tot_reg_blocks += gen->n_blocks + gen_gcthread_blocks;
+      tot_large_blocks += gen->n_large_blocks;
+      tot_compact_blocks += gen->n_compact_blocks;
+
+      tot_lge += lge;
+      tot_compacts += compacts;
+
+      // XXX large_object closures of size 1028 words are found to be actually
+      // 1030 words (bd->free - bd_start). This creates a discrepancy in live
+      // bytes counted by walking the closures vs computed from the large
+      // object blocks.
+      if (verbose) {
+        fprintf(hp_file, "gen %d:\n", g);
+        fprintf(hp_file
+            , "\tblocks (reg+large+compact):%lu (%lu + %lu + %lu)\n"
+            , gen_blocks
+            , gen->n_blocks + gen_gcthread_blocks
+            , gen->n_large_blocks
+            , gen->n_compact_blocks);
+        fprintf(hp_file, "\twords (live(reg+large+compact)+slop):"
+            "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
+            , gen_blocks * BLOCK_SIZE_W
+            , gen_live_words
+            , gen->n_words + gen_gcthread_words
+            , gen->n_large_words
+            , gen->n_compact_blocks * BLOCK_SIZE_W
+            , gen_slop_words
+            );
+        fprintf(hp_file, "\tbytes (live(reg+large+compact)+slop):"
+            "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
+            , gen_blocks * BLOCK_SIZE_W * sizeof(W_)
+            , gen_live_words * sizeof(W_)
+            , gen->n_words * sizeof(W_) + gen_gcthread_words * sizeof(W_)
+            , gen->n_large_words * sizeof(W_)
+            , gen->n_compact_blocks * BLOCK_SIZE_W * sizeof(W_)
+            , gen_slop_words * sizeof(W_)
+            );
+        fprintf(hp_file, "\tobject count (large, compact): (%u, %u)\n"
+              , lge, compacts);
+      }
+  }
+  fprintf(hp_file, "total:\n");
+  fprintf(hp_file
+      , "\tblocks (reg+large+compact):%lu (%lu + %lu + %lu)\n"
+      , tot_reg_blocks + tot_large_blocks + tot_compact_blocks
+      , tot_reg_blocks
+      , tot_large_blocks
+      , tot_compact_blocks);
+  if (verbose) {
+    fprintf(hp_file, "\twords (live(reg+large+compact)+slop):"
+        "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
+        , (tot_reg_blocks + tot_large_blocks + tot_compact_blocks) * BLOCK_SIZE_W
+        , tot_live_words
+        , tot_reg_words
+        , tot_large_words
+        , tot_compact_blocks * BLOCK_SIZE_W
+        , tot_slop_words
+        );
+  }
+  fprintf(hp_file, "\tbytes (used(reg+large+compact)+slop):"
+      "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
+      , (tot_reg_blocks + tot_large_blocks + tot_compact_blocks) * BLOCK_SIZE_W * sizeof(W_)
+      , tot_live_words * sizeof(W_)
+      , tot_reg_words * sizeof(W_)
+      , tot_large_words * sizeof(W_)
+      , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_)
+      , tot_slop_words * sizeof(W_)
+      );
+  fprintf(hp_file, "\tlarge object count: %u\n", tot_lge);
+  if (verbose) {
+    fprintf(hp_file, "\tcompact object count: %u\n", tot_compacts);
+  }
+  fprintf(hp_file, "mega blocks (used + free) in bytes:%lu (%lu pages)\n"
+        , stats.gc.mem_in_use_bytes
+        , stats.gc.mem_in_use_bytes / 4096);
+  /*
+  fprintf(hp_file, "live bytes (total,large,compact,slop):%lu,%lu,%lu,%lu\n"
+        , stats.gc.live_bytes
+        , stats.gc.large_objects_bytes
+        , stats.gc.compact_bytes
+        , stats.gc.slop_bytes);
+  */
+  //fprintf(hp_file, "---------End of Haskell Heap Summary-----------\n");
 }
 
 void liveDiff(size_t bytes) {
-    fprintf(hp_file, "live bytes diff: %ld\n",
+    fprintf(hp_file, "live bytes deviation: %ld\n",
           stats.gc.live_bytes - bytes);
 }
 
