@@ -1887,9 +1887,15 @@ void getGCStats(bool verbose)
   if (verbose) {
     fprintf(hp_file, "\tcompact object count: %u\n", tot_compacts);
   }
-  fprintf(hp_file, "mega blocks (used + free) in bytes:%lu (%lu pages)\n"
+
+  // XXX See memInventory function in rts/sm/Sanity.c for more ideas.
+  /*
+  fprintf(hp_file, "mblocks in bytes at gc:%lu (%lu pages)\n"
         , stats.gc.mem_in_use_bytes
         , stats.gc.mem_in_use_bytes / 4096);
+  */
+  fprintf(hp_file, "n_alloc_blocks:%lu\n", n_alloc_blocks);
+  fprintf(hp_file, "mblocks_allocated:%lu\n", mblocks_allocated);
   /*
   fprintf(hp_file, "live bytes (total,large,compact,slop):%lu,%lu,%lu,%lu\n"
         , stats.gc.live_bytes

@@ -446,6 +446,9 @@ allocGroupOnNode (uint32_t node, W_ n)
 
         // n_alloc_blocks doesn't count the extra blocks we get in a
         // megablock group.
+        // XXX But we are counting that here. Will this assert in
+        // sm/Sanity.c pass?
+        // ASSERT(n_alloc_blocks == live_blocks);
         recordAllocatedBlocks(node, mblocks * BLOCKS_PER_MBLOCK);
 
         bd = alloc_mega_group(node, mblocks);
