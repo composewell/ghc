@@ -1753,12 +1753,13 @@ uint32_t getNumGcs(void)
 
 void getGCStats(bool verbose)
 {
-  uint32_t g, lge, compacts, i, tot_lge, tot_compacts;
-  //uint32_t mut;
+  uint32_t g, i, mut;
+  uint32_t gen_large_objs, gen_pinned_objs, gen_compact_objs;
+  uint32_t tot_large_objs, tot_compact_objs, tot_pinned_objs;
   W_ gen_live_words, gen_slop_words, gen_gcthread_words;
   W_ tot_live_words, tot_slop_words, tot_reg_words, tot_large_words;
-  W_ gen_blocks, gen_gcthread_blocks;
-  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks;
+  W_ gen_blocks, gen_gcthread_blocks, cur_pinned_blocks;
+  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks, tot_pinned_blocks;
   bdescr *bd;
   generation *gen;
 
@@ -1766,42 +1767,49 @@ void getGCStats(bool verbose)
   tot_slop_words = 0;
   tot_reg_words = 0;
   tot_large_words = 0;
+
   tot_reg_blocks = 0;
   tot_large_blocks = 0;
   tot_compact_blocks = 0;
-  tot_lge = 0;
-  tot_compacts = 0;
+  tot_pinned_blocks = 0;
+
+  tot_large_objs = 0;
+  tot_pinned_objs = 0;
+  tot_compact_objs = 0;
 
   fprintf(hp_file, "---------Haskell Heap Summary-----------\n");
   for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
       gen = &generations[g];
 
-      for (bd = gen->large_objects, lge = 0; bd; bd = bd->link) {
-          lge++;
+      // Each large object may contain multiple contiguous 4K blocks.
+      // Large blocks count small pinned objects as well, because the
+      // pinned blocks are added to the large block list.
+      for (bd = gen->large_objects, gen_large_objs = 0, gen_pinned_objs = 0;
+            bd; bd = bd->link) {
+          gen_large_objs++;
+          if (bd->flags & BF_PINNED) {
+            gen_pinned_objs++;
+            if (bd->blocks) {
+              tot_pinned_blocks += bd->blocks;
+            } else {
+              tot_pinned_blocks++;
+            }
+          }
       }
 
-      for (bd = gen->compact_objects, compacts = 0; bd; bd = bd->link) {
-          compacts++;
+      // Each compact object may contain multiple contiguous 4K blocks.
+      for (bd = gen->compact_objects, gen_compact_objs = 0; bd; bd = bd->link) {
+          gen_compact_objs++;
       }
 
       gen_live_words = genLiveWords(gen);
       gen_blocks = genLiveBlocks(gen);
 
-      //mut = 0;
+      mut = 0;
       gen_gcthread_blocks = 0;
       gen_gcthread_words = 0;
       for (i = 0; i < n_capabilities; i++) {
-          //mut += countOccupied(capabilities[i]->mut_lists[g]);
-
-          // Add the pinned object block.
-          /*
-          bd = capabilities[i]->pinned_object_block;
-          if (bd != NULL) {
-              gen_live_words   += bd->free - bd->start;
-              gen_blocks += bd->blocks;
-          }
-          */
-
+          mut += countOccupied(capabilities[i]->mut_lists[g]);
           gen_gcthread_words += gcThreadLiveWords(i,g);
           gen_gcthread_blocks += gcThreadLiveBlocks(i,g);
       }
@@ -1817,10 +1825,10 @@ void getGCStats(bool verbose)
 
       tot_reg_blocks += gen->n_blocks + gen_gcthread_blocks;
       tot_large_blocks += gen->n_large_blocks;
+      tot_large_objs += gen_large_objs;
       tot_compact_blocks += gen->n_compact_blocks;
-
-      tot_lge += lge;
-      tot_compacts += compacts;
+      tot_compact_objs += gen_compact_objs;
+      tot_pinned_objs += gen_pinned_objs;
 
       // XXX large_object closures of size 1028 words are found to be actually
       // 1030 words (bd->free - bd_start). This creates a discrepancy in live
@@ -1828,21 +1836,10 @@ void getGCStats(bool verbose)
       // object blocks.
       if (verbose) {
         fprintf(hp_file, "gen %d:\n", g);
-        fprintf(hp_file
-            , "\tblocks (reg+large+compact):%lu (%lu + %lu + %lu)\n"
-            , gen_blocks
-            , gen->n_blocks + gen_gcthread_blocks
-            , gen->n_large_blocks
-            , gen->n_compact_blocks);
-        fprintf(hp_file, "\twords (live(reg+large+compact)+slop):"
-            "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
-            , gen_blocks * BLOCK_SIZE_W
-            , gen_live_words
-            , gen->n_words + gen_gcthread_words
-            , gen->n_large_words
-            , gen->n_compact_blocks * BLOCK_SIZE_W
-            , gen_slop_words
-            );
+        fprintf(hp_file, "mut list words %u:\n", mut);
+        fprintf(hp_file, "\tlarge object count (unpinned, pinned): %u (%u, %u)\n"
+              , gen_large_objs, gen_large_objs - gen_pinned_objs, gen_pinned_objs);
+        fprintf(hp_file, "\tcompact object count: %u\n" , gen_compact_objs);
         fprintf(hp_file, "\tbytes (live(reg+large+compact)+slop):"
             "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
             , gen_blocks * BLOCK_SIZE_W * sizeof(W_)
@@ -1852,17 +1849,59 @@ void getGCStats(bool verbose)
             , gen->n_compact_blocks * BLOCK_SIZE_W * sizeof(W_)
             , gen_slop_words * sizeof(W_)
             );
-        fprintf(hp_file, "\tobject count (large, compact): (%u, %u)\n"
-              , lge, compacts);
+        fprintf(hp_file, "\twords (live(reg+large+compact)+slop):"
+            "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
+            , gen_blocks * BLOCK_SIZE_W
+            , gen_live_words
+            , gen->n_words + gen_gcthread_words
+            , gen->n_large_words
+            , gen->n_compact_blocks * BLOCK_SIZE_W
+            , gen_slop_words
+            );
+        fprintf(hp_file
+            , "\tblocks (reg+large+compact):%lu (%lu + %lu + %lu)\n"
+            , gen_blocks
+            , gen->n_blocks + gen_gcthread_blocks
+            , gen->n_large_blocks
+            , gen->n_compact_blocks);
       }
   }
+
+  // XXX How is a pinned block freed? How do we know that all pinned objects in
+  // a pinned block are dead?
+  cur_pinned_blocks = 0;
+  for (i = 0; i < n_capabilities; i++) {
+      // cap->pinned_object_blocks is transferred to large_objects during gc,
+      // so we do not worry about that, as we are called just after the GC.
+      bd = capabilities[i]->pinned_object_block;
+      if (bd != NULL) {
+          cur_pinned_blocks++;
+      }
+  }
+
+  // XXX pinned blocks may have less used space than actually reported,
+  // because bd->free is not adjusted when objects become dead. So
+  // in presence of pinned objects live words calculated using
+  // blocks may be more than the live words computed by traversing
+  // the heap. The deviation between the two includes the dead pinned
+  // objects.
   fprintf(hp_file, "total:\n");
-  fprintf(hp_file
-      , "\tblocks (reg+large+compact):%lu (%lu + %lu + %lu)\n"
-      , tot_reg_blocks + tot_large_blocks + tot_compact_blocks
-      , tot_reg_blocks
-      , tot_large_blocks
-      , tot_compact_blocks);
+  fprintf(hp_file, "\tlarge object count (unpinned, pinned): %u (%u, %u)\n"
+      , tot_large_objs
+      , tot_large_objs - tot_pinned_objs
+      , tot_pinned_objs);
+  if (verbose) {
+    fprintf(hp_file, "\tcompact object count: %u\n", tot_compact_objs);
+  }
+  fprintf(hp_file, "\tbytes (used(reg+large+compact)+slop):"
+      "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
+      , (tot_reg_blocks + tot_large_blocks + tot_compact_blocks) * BLOCK_SIZE_W * sizeof(W_)
+      , tot_live_words * sizeof(W_)
+      , tot_reg_words * sizeof(W_)
+      , tot_large_words * sizeof(W_)
+      , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_)
+      , tot_slop_words * sizeof(W_)
+      );
   if (verbose) {
     fprintf(hp_file, "\twords (live(reg+large+compact)+slop):"
         "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
@@ -1874,19 +1913,15 @@ void getGCStats(bool verbose)
         , tot_slop_words
         );
   }
-  fprintf(hp_file, "\tbytes (used(reg+large+compact)+slop):"
-      "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
-      , (tot_reg_blocks + tot_large_blocks + tot_compact_blocks) * BLOCK_SIZE_W * sizeof(W_)
-      , tot_live_words * sizeof(W_)
-      , tot_reg_words * sizeof(W_)
-      , tot_large_words * sizeof(W_)
-      , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_)
-      , tot_slop_words * sizeof(W_)
-      );
-  fprintf(hp_file, "\tlarge object count: %u\n", tot_lge);
-  if (verbose) {
-    fprintf(hp_file, "\tcompact object count: %u\n", tot_compacts);
-  }
+  fprintf(hp_file
+      , "\tblocks (reg+large(unpinned, pinned)+compact):%lu (%lu + %lu (%lu, %lu) + %lu)\n"
+      , tot_reg_blocks + tot_large_blocks + tot_compact_blocks
+      , tot_reg_blocks
+      , tot_large_blocks
+      , tot_large_blocks - tot_pinned_blocks
+      , tot_pinned_blocks
+      , tot_compact_blocks);
+  fprintf(hp_file, "\tIn transit pinned blocks:%lu\n", cur_pinned_blocks);
 
   // XXX See memInventory function in rts/sm/Sanity.c for more ideas.
   /*
