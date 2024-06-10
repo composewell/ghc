@@ -787,6 +787,10 @@ uint64_t gcDiffOldest = 20;
 uint64_t gcAbsOldest = 10;
 enum ReportType report = GC_WINDOW;
 
+// In words.
+// uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
+uint64_t sizeThreshold = 0;
+
 static const char* stringifyReportType(enum ReportType rep)
 {
    switch (rep)
@@ -797,24 +801,28 @@ static const char* stringifyReportType(enum ReportType rep)
    }
 }
 
-static bool isOldClosure (StgClosure *c) {
+static bool filterClosure (StgClosure *c, size_t size) {
     // We increment the stats before heap traversal.
     uint64_t curGC = (uint64_t) getNumGcs() - 1;
     uint64_t gcid = (StgWord64) c->header.prof.ccs;
 
-    switch (report) {
-      case GC_WINDOW:
-        return
-            (  gcid >= curGC - gcDiffOldest
-            && gcid <= curGC - gcDiffNewest
-            );
-      case GC_SINCE:
-        return
-            (  gcid >= gcAbsOldest
-            && gcid <= curGC - gcDiffNewest
-            );
-      default: barf("isOldClosure: unhandled report type\n");
+    if (size >= sizeThreshold) {
+      switch (report) {
+        case GC_WINDOW:
+          return
+              (  gcid >= curGC - gcDiffOldest
+              && gcid <= curGC - gcDiffNewest
+              );
+        case GC_SINCE:
+          return
+              (  gcid >= gcAbsOldest
+              && gcid <= curGC - gcDiffNewest
+              );
+        default: barf("filterClosure: unhandled report type\n");
+      }
     }
+
+    return false;
 }
 
 /**
@@ -853,7 +861,6 @@ traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
     // Is this the last internal element? If so instead of modifying the current
     // stackElement in place we actually remove it from the stack.
     bool last;
-    size_t cl_size;
 
 begin:
     last = false;
@@ -892,10 +899,11 @@ begin:
 
             StgClosure *c_untagged;
             c_untagged = UNTAG_CLOSURE(se->c);
-            if ((char *)c_untagged >= (char *)mblock_address_space.begin
-                && isOldClosure (c_untagged)) {
-              cl_size = getClosureSize(c_untagged);
-              *cur_size = *cur_size + cl_size;
+            if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+                size_t cl_size = getClosureSize(c_untagged);
+                if (filterClosure (c_untagged, cl_size)) {
+                  *cur_size = *cur_size + cl_size;
+                }
             }
 
             if (*cur_size > 0 || se->se_subtree_size > 0) {
