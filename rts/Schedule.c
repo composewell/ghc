@@ -1550,11 +1550,21 @@ void triggerProf( StgWord8 reportGcType
                 , StgWord64 gcAOldest)
 {
 #if defined(GC_PROFILING)
-    if (reportGcType == 0) {
+    // We can use bit 0 for the report type and bit 1 for verbosity
+    // 0 == Since and not Verbose
+    // 1 == Window and not Verbose
+    // 2 == Since and Verbose
+    // 3 == Window and Verbose
+    bool isReportSince = (reportGcType & 1) == 0;
+    bool isVerbose = ((reportGcType >> 1) & 1) == 1;
+
+    if (isReportSince) {
         report = GC_SINCE;
     } else {
         report = GC_WINDOW;
     }
+    isReportVerbose = isVerbose;
+
     // XXX Is there a way to manually specify coercion?
     // Int to Unsigned Int should be fine?
     gcDiffNewest = gcDNewest;

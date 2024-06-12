@@ -786,6 +786,7 @@ uint64_t gcDiffNewest = 10;
 uint64_t gcDiffOldest = 20;
 uint64_t gcAbsOldest = 10;
 enum ReportType report = GC_WINDOW;
+bool isReportVerbose = false;
 
 // In words.
 // uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
@@ -1544,7 +1545,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // We increment the stats before heap traversal.
     uint64_t curGc = (uint64_t) getNumGcs() - 1;
     stackElement *se;
-    bool verbose = false;
+    bool verbose = isReportVerbose;
 
     // Now we flip the flip bit.
     flip = flip ^ 1;

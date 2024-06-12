@@ -29,6 +29,7 @@ extern uint64_t gcDiffNewest;
 extern uint64_t gcDiffOldest;
 extern uint64_t gcAbsOldest;
 extern enum ReportType report;
+extern bool isReportVerbose;
 
 // -----------------------------------------------------------------------------
 
