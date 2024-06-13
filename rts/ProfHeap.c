@@ -1027,6 +1027,7 @@ heapCensusCompactList(Census *census, bdescr *bd)
 
 extern size_t getClosureSize(const StgClosure *p);
 
+// XXX Use closure_sizeW instead.
 // Size in Stg Words units.
 size_t getClosureSize(const StgClosure *p) {
     const StgInfoTable *info;

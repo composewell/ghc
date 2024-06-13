@@ -1751,15 +1751,17 @@ uint32_t getNumGcs(void)
     return stats.gcs;
 }
 
+extern size_t getClosureSize(const StgClosure *p);
+
 void getGCStats(bool verbose)
 {
   uint32_t g, i, mut;
-  uint32_t gen_large_objs, gen_pinned_objs, gen_compact_objs;
-  uint32_t tot_large_objs, tot_compact_objs, tot_pinned_objs;
-  W_ gen_live_words, gen_slop_words, gen_gcthread_words;
+  uint32_t gen_large_objs, gen_large_multi_objs, gen_compact_objs;
+  uint32_t tot_large_objs, tot_compact_objs, tot_large_multi_objs;
+  W_ gen_live_words, gen_slop_words, gen_gcthread_words, cur_pinned_words;
   W_ tot_live_words, tot_slop_words, tot_reg_words, tot_large_words;
   W_ gen_blocks, gen_gcthread_blocks, cur_pinned_blocks;
-  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks, tot_pinned_blocks;
+  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks;
   bdescr *bd;
   generation *gen;
 
@@ -1771,28 +1773,36 @@ void getGCStats(bool verbose)
   tot_reg_blocks = 0;
   tot_large_blocks = 0;
   tot_compact_blocks = 0;
-  tot_pinned_blocks = 0;
 
   tot_large_objs = 0;
-  tot_pinned_objs = 0;
+  tot_large_multi_objs = 0;
   tot_compact_objs = 0;
 
   fprintf(hp_file, "---------Haskell Heap Summary-----------\n");
   for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
       gen = &generations[g];
 
-      // Each large object may contain multiple contiguous 4K blocks.
-      // Large blocks count small pinned objects as well, because the
-      // pinned blocks are added to the large block list.
-      for (bd = gen->large_objects, gen_large_objs = 0, gen_pinned_objs = 0;
+      // BF_LARGE and BF_PINNED both imply pinned. We do not need to
+      // distinguish those. The large object list contains both. Small pinned
+      // objects are stuffed in large pinned blocks. We need to distinguish
+      // those.
+      for (bd = gen->large_objects, gen_large_objs = 0, gen_large_multi_objs = 0;
             bd; bd = bd->link) {
           gen_large_objs++;
-          if (bd->flags & BF_PINNED) {
-            gen_pinned_objs++;
-            if (bd->blocks) {
-              tot_pinned_blocks += bd->blocks;
-            } else {
-              tot_pinned_blocks++;
+          // Note even objects which were allocated via the pointer bump
+          // allocator may be single object sometimes, such blocks are also
+          // counted as large single object blocks.
+          if (bd->blocks <= 1) {
+            // This may not work accurately always, because in some cases we
+            // have space lost due to alignment e.g. an array closure is
+            // aligned to BA_ALIGN which may pad a word or two before the
+            // array. However, the start of a block is always aligned,
+            // therefore, should work.
+            StgClosure *c = UNTAG_CLOSURE((StgClosure *)(bd->start));
+            size_t size = getClosureSize(c);
+            if (size < LARGE_OBJECT_THRESHOLD &&
+                  bd->start + size < bd->free) {
+              gen_large_multi_objs++;
             }
           }
       }
@@ -1828,17 +1838,20 @@ void getGCStats(bool verbose)
       tot_large_objs += gen_large_objs;
       tot_compact_blocks += gen->n_compact_blocks;
       tot_compact_objs += gen_compact_objs;
-      tot_pinned_objs += gen_pinned_objs;
+      tot_large_multi_objs += gen_large_multi_objs;
 
       // XXX large_object closures of size 1028 words are found to be actually
       // 1030 words (bd->free - bd_start). This creates a discrepancy in live
       // bytes counted by walking the closures vs computed from the large
-      // object blocks.
+      // object blocks. The discrepancy could be due to the BA_ALIGN addition
+      // in stg_newPinnedByteArrayzh. We can just account this as fragmentation
+      // or slop space. But the alignment should be 0 at the start of a block
+      // as it is always perfectly aligned.
       if (verbose) {
         fprintf(hp_file, "gen %d:\n", g);
         fprintf(hp_file, "mut list words %u:\n", mut);
-        fprintf(hp_file, "\tlarge object count (unpinned, pinned): %u (%u, %u)\n"
-              , gen_large_objs, gen_large_objs - gen_pinned_objs, gen_pinned_objs);
+        fprintf(hp_file, "\tlarge object count (single, multi): %u (%u, %u)\n"
+              , gen_large_objs, gen_large_objs - gen_large_multi_objs, gen_large_multi_objs);
         fprintf(hp_file, "\tcompact object count: %u\n" , gen_compact_objs);
         fprintf(hp_file, "\tbytes (live(reg+large+compact)+slop):"
             "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
@@ -1870,12 +1883,19 @@ void getGCStats(bool verbose)
   // XXX How is a pinned block freed? How do we know that all pinned objects in
   // a pinned block are dead?
   cur_pinned_blocks = 0;
+  cur_pinned_words = 0;
   for (i = 0; i < n_capabilities; i++) {
-      // cap->pinned_object_blocks is transferred to large_objects during gc,
-      // so we do not worry about that, as we are called just after the GC.
       bd = capabilities[i]->pinned_object_block;
       if (bd != NULL) {
           cur_pinned_blocks++;
+          cur_pinned_words = bd->free - bd->start;
+      }
+      // cap->pinned_object_blocks is transferred to large_objects during gc,
+      // so we do not worry about that, as we are called just after the GC.
+      bd = capabilities[i]->pinned_object_blocks;
+      for (; bd; bd = bd->link) {
+            cur_pinned_blocks++;
+            cur_pinned_words = bd->free - bd->start;
       }
   }
 
@@ -1885,11 +1905,22 @@ void getGCStats(bool verbose)
   // blocks may be more than the live words computed by traversing
   // the heap. The deviation between the two includes the dead pinned
   // objects.
+  //
+  // XXX Print fragmentation (slop) percentage of all, pinned multi-object,
+  // unpinned multi-object blocks based on bytes counted by heap traversal and
+  // bytes counted using blocks.
+  //
+  // XXX Print fragmentation (slop) percentage of all large blocks based on
+  // bytes counted by heap traversal and bytes counted using blocks.
+  //
+  // XXX Print fragmentation percentage of megablocks by counting free
+  // full megablocks (free_mblock_list) and total free blocks
+  // (mblocks_allocated - n_alloc_blocks).
   fprintf(hp_file, "total:\n");
-  fprintf(hp_file, "\tlarge object count (unpinned, pinned): %u (%u, %u)\n"
+  fprintf(hp_file, "\tlarge object count (single, multi): %u (%u, %u)\n"
       , tot_large_objs
-      , tot_large_objs - tot_pinned_objs
-      , tot_pinned_objs);
+      , tot_large_objs - tot_large_multi_objs
+      , tot_large_multi_objs);
   if (verbose) {
     fprintf(hp_file, "\tcompact object count: %u\n", tot_compact_objs);
   }
@@ -1914,14 +1945,16 @@ void getGCStats(bool verbose)
         );
   }
   fprintf(hp_file
-      , "\tblocks (reg+large(unpinned, pinned)+compact):%lu (%lu + %lu (%lu, %lu) + %lu)\n"
+      , "\tblocks (reg+large(single, multi)+compact):%lu (%lu + %lu (%lu, %u) + %lu)\n"
       , tot_reg_blocks + tot_large_blocks + tot_compact_blocks
       , tot_reg_blocks
       , tot_large_blocks
-      , tot_large_blocks - tot_pinned_blocks
-      , tot_pinned_blocks
+      , tot_large_blocks - tot_large_multi_objs
+      , tot_large_multi_objs
       , tot_compact_blocks);
-  fprintf(hp_file, "\tIn transit pinned blocks:%lu\n", cur_pinned_blocks);
+  fprintf(hp_file, "\tIn transit pinned multi-object blocks:%lu (%lu words)\n"
+      , cur_pinned_blocks
+      , cur_pinned_words);
 
   // XXX See memInventory function in rts/sm/Sanity.c for more ideas.
   /*
@@ -1939,6 +1972,38 @@ void getGCStats(bool verbose)
         , stats.gc.slop_bytes);
   */
   //fprintf(hp_file, "---------End of Haskell Heap Summary-----------\n");
+
+  if (verbose) {
+    // Only blocks with multiple objects can cause block level
+    // fragmentation.  Large object blocks can cause mega block level
+    // fragmentation but they can be identified by the heap traversal
+    // output, or we can dump those as well here.
+    //
+    // Technically, unpinned large can be moved to reduce megablock
+    // level fragmentation. We can allocate BF_PINNED memory from
+    // separate megablocks. BF_LARGE without BF_PINNED can be moved by
+    // the GC. Though this will break the assumption that BF_LARGE
+    // cannot be moved e.g. isByteArrayPinned primitive returns
+    // pinned even if only BF_LARGE is set.
+    fprintf(hp_file, "Pinned small object blocks\n");
+    for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
+        gen = &generations[g];
+
+        for (bd = gen->large_objects; bd; bd = bd->link) {
+            if (bd->blocks <= 1) {
+              StgClosure *c = UNTAG_CLOSURE((StgClosure *)(bd->start));
+              size_t size = getClosureSize(c);
+              // Print only if there are more than one objects in the block.
+              if (size < LARGE_OBJECT_THRESHOLD &&
+                    bd->start + size < bd->free) {
+                // assert (bd->blocks != 1);
+                fprintf(hp_file, "%p ", bd->start);
+              }
+            }
+        }
+    }
+    fprintf(hp_file, "\n");
+  }
 }
 
 void liveDiff(size_t bytes) {
