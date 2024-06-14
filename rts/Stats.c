@@ -1962,8 +1962,22 @@ void getGCStats(bool verbose)
         , stats.gc.mem_in_use_bytes
         , stats.gc.mem_in_use_bytes / 4096);
   */
+  // allocated at the block allocator level, includes the free blocks in
+  // nursery.
+  W_ n_free_blocks = countFreeListBlocks();
+
   fprintf(hp_file, "n_alloc_blocks:%lu\n", n_alloc_blocks);
-  fprintf(hp_file, "mblocks_allocated:%lu\n", mblocks_allocated);
+  // Blocks that are completely free at the block allocator level, not even in
+  // nursery.
+  fprintf(hp_file, "n_free_blocks:%lu\n", n_free_blocks);
+  // Blocks allocated at mblock allocator level. These blocks may have free
+  // space which is accounted in the free blocks at block level.
+  fprintf(hp_file, "n_alloc_mblocks:%lu\n", mblocks_allocated);
+  // Completely free mblocks, none of this space is used anywhere and can be
+  // returned to the OS.
+  fprintf(hp_file, "n_free_mblocks:%lu\n", countFreeMBlocks());
+  fprintf(hp_file, "fragmented free space in used mblocks:%lu%\n"
+        , (n_free_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
   /*
   fprintf(hp_file, "live bytes (total,large,compact,slop):%lu,%lu,%lu,%lu\n"
         , stats.gc.live_bytes
