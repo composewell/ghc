@@ -1577,13 +1577,13 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     } else {
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }
-    fprintf (hp_file, "flip: {%lu}\n" , flip);
-    getGCStats(verbose);
     getMemMaps(verbose, 256);
     if (verbose) {
         getMemUsage();
     }
+    getGCStats(verbose);
     fprintf(hp_file, "---------Haskell Heap Details-----------\n");
+    fprintf (hp_file, "flip: {%lu}\n" , flip);
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);

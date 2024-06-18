@@ -1753,26 +1753,48 @@ uint32_t getNumGcs(void)
 
 extern size_t getClosureSize(const StgClosure *p);
 
+static void reportWithUtil (char *desc, W_ blocks, W_ words) {
+  W_ bytes = blocks * BLOCK_SIZE_W * sizeof(W_);
+  W_ used_bytes = words * sizeof(W_);
+  W_ percent_bytes;
+
+  if (bytes != 0) {
+    percent_bytes = (used_bytes * 100) / bytes;
+  } else {
+    percent_bytes = 100;
+  }
+
+  fprintf(hp_file,
+        "%s:%lu/%lu (%lu%% utilized)\n"
+      , desc
+      , used_bytes
+      , bytes
+      , percent_bytes);
+}
+
 void getGCStats(bool verbose)
 {
-  uint32_t g, i, mut;
+  uint32_t g, i;
   uint32_t gen_large_objs, gen_large_multi_objs, gen_compact_objs;
   uint32_t tot_large_objs, tot_compact_objs, tot_large_multi_objs;
-  W_ gen_live_words, gen_slop_words, gen_gcthread_words, cur_pinned_words;
-  W_ tot_live_words, tot_slop_words, tot_reg_words, tot_large_words;
+  W_ gen_live_words, gen_gcthread_words, cur_pinned_words;
+  W_ tot_live_words, tot_reg_words, tot_large_words, tot_mut_words, tot_gct_words;
   W_ gen_blocks, gen_gcthread_blocks, cur_pinned_blocks;
-  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks;
+  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks, tot_mut_blocks, tot_gct_blocks;
   bdescr *bd;
   generation *gen;
 
   tot_live_words = 0;
-  tot_slop_words = 0;
   tot_reg_words = 0;
   tot_large_words = 0;
+  tot_mut_words = 0;
+  tot_gct_words = 0;
 
   tot_reg_blocks = 0;
   tot_large_blocks = 0;
   tot_compact_blocks = 0;
+  tot_mut_blocks = 0;
+  tot_gct_blocks = 0;
 
   tot_large_objs = 0;
   tot_large_multi_objs = 0;
@@ -1815,25 +1837,25 @@ void getGCStats(bool verbose)
       gen_live_words = genLiveWords(gen);
       gen_blocks = genLiveBlocks(gen);
 
-      mut = 0;
       gen_gcthread_blocks = 0;
       gen_gcthread_words = 0;
       for (i = 0; i < n_capabilities; i++) {
-          mut += countOccupied(capabilities[i]->mut_lists[g]);
+          tot_mut_words += countOccupied(capabilities[i]->mut_lists[g]);
+          tot_mut_blocks += countBlocks(capabilities[i]->mut_lists[g]);
           gen_gcthread_words += gcThreadLiveWords(i,g);
           gen_gcthread_blocks += gcThreadLiveBlocks(i,g);
       }
 
       gen_live_words += gen_gcthread_words;
       gen_blocks += gen_gcthread_blocks;
-      gen_slop_words = gen_blocks * BLOCK_SIZE_W - gen_live_words;
 
       tot_live_words += gen_live_words;
-      tot_slop_words += gen_slop_words;
       tot_reg_words += gen->n_words + gen_gcthread_words;
+      tot_gct_words += gen_gcthread_words;
       tot_large_words += gen->n_large_words;
 
       tot_reg_blocks += gen->n_blocks + gen_gcthread_blocks;
+      tot_gct_blocks += gen_gcthread_blocks;
       tot_large_blocks += gen->n_large_blocks;
       tot_large_objs += gen_large_objs;
       tot_compact_blocks += gen->n_compact_blocks;
@@ -1849,34 +1871,47 @@ void getGCStats(bool verbose)
       // as it is always perfectly aligned.
       if (verbose) {
         fprintf(hp_file, "gen %d:\n", g);
-        fprintf(hp_file, "mut list words %u:\n", mut);
-        fprintf(hp_file, "\tlarge object count (single, multi): %u (%u, %u)\n"
-              , gen_large_objs, gen_large_objs - gen_large_multi_objs, gen_large_multi_objs);
-        fprintf(hp_file, "\tcompact object count: %u\n" , gen_compact_objs);
-        fprintf(hp_file, "\tbytes (live(reg+large+compact)+slop):"
-            "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
-            , gen_blocks * BLOCK_SIZE_W * sizeof(W_)
-            , gen_live_words * sizeof(W_)
-            , gen->n_words * sizeof(W_) + gen_gcthread_words * sizeof(W_)
-            , gen->n_large_words * sizeof(W_)
-            , gen->n_compact_blocks * BLOCK_SIZE_W * sizeof(W_)
-            , gen_slop_words * sizeof(W_)
-            );
-        fprintf(hp_file, "\twords (live(reg+large+compact)+slop):"
-            "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
-            , gen_blocks * BLOCK_SIZE_W
-            , gen_live_words
-            , gen->n_words + gen_gcthread_words
-            , gen->n_large_words
-            , gen->n_compact_blocks * BLOCK_SIZE_W
-            , gen_slop_words
-            );
-        fprintf(hp_file
-            , "\tblocks (reg+large+compact):%lu (%lu + %lu + %lu)\n"
+
+        W_ gen_large_single_blocks = gen->n_large_blocks - gen_large_multi_objs;
+
+        fprintf(hp_file,
+              " live blocks: %lu\n"
+              "  regular: %lu\n"
+              "  large (pinned): %lu\n"
+              "   single-object: %lu\n"
+              "   multi-object: %u\n"
+              "  compact:%lu\n"
             , gen_blocks
             , gen->n_blocks + gen_gcthread_blocks
             , gen->n_large_blocks
+            , gen_large_single_blocks
+            , gen_large_multi_objs
             , gen->n_compact_blocks);
+
+        reportWithUtil (" live bytes", gen_blocks, gen_live_words);
+        reportWithUtil ("  regular"
+              , gen->n_blocks + gen_gcthread_blocks
+              , gen->n_words + gen_gcthread_words);
+        reportWithUtil ("   gcthreads"
+              , gen_gcthread_blocks, gen_gcthread_words);
+        reportWithUtil ("   others", gen->n_blocks , gen->n_words);
+        reportWithUtil ("  large (pinned)"
+              , gen->n_large_blocks, gen->n_large_words);
+        reportWithUtil ("   single-object"
+              , gen_large_single_blocks, 0);
+        reportWithUtil ("   multi-object"
+              , gen_large_multi_objs, 0);
+        fprintf(hp_file, "  compact: %lu\n"
+            , gen->n_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
+
+        fprintf(hp_file,
+              " large (pinned) object count: %u\n"
+              "  single: %u\n"
+              "  multi: %u\n"
+            , gen_large_objs
+            , gen_large_objs - gen_large_multi_objs
+            , gen_large_multi_objs);
+        fprintf(hp_file, " compact object count: %u\n", gen_compact_objs);
       }
   }
 
@@ -1913,48 +1948,6 @@ void getGCStats(bool verbose)
   // XXX Print fragmentation (slop) percentage of all large blocks based on
   // bytes counted by heap traversal and bytes counted using blocks.
   //
-  // XXX Print fragmentation percentage of megablocks by counting free
-  // full megablocks (free_mblock_list) and total free blocks
-  // (mblocks_allocated - n_alloc_blocks).
-  fprintf(hp_file, "total:\n");
-  fprintf(hp_file, "\tlarge object count (single, multi): %u (%u, %u)\n"
-      , tot_large_objs
-      , tot_large_objs - tot_large_multi_objs
-      , tot_large_multi_objs);
-  if (verbose) {
-    fprintf(hp_file, "\tcompact object count: %u\n", tot_compact_objs);
-  }
-  fprintf(hp_file, "\tbytes (used(reg+large+compact)+slop):"
-      "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
-      , (tot_reg_blocks + tot_large_blocks + tot_compact_blocks) * BLOCK_SIZE_W * sizeof(W_)
-      , tot_live_words * sizeof(W_)
-      , tot_reg_words * sizeof(W_)
-      , tot_large_words * sizeof(W_)
-      , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_)
-      , tot_slop_words * sizeof(W_)
-      );
-  if (verbose) {
-    fprintf(hp_file, "\twords (live(reg+large+compact)+slop):"
-        "%lu (%lu (%lu + %lu + %lu) + %lu)\n"
-        , (tot_reg_blocks + tot_large_blocks + tot_compact_blocks) * BLOCK_SIZE_W
-        , tot_live_words
-        , tot_reg_words
-        , tot_large_words
-        , tot_compact_blocks * BLOCK_SIZE_W
-        , tot_slop_words
-        );
-  }
-  fprintf(hp_file
-      , "\tblocks (reg+large(single, multi)+compact):%lu (%lu + %lu (%lu, %u) + %lu)\n"
-      , tot_reg_blocks + tot_large_blocks + tot_compact_blocks
-      , tot_reg_blocks
-      , tot_large_blocks
-      , tot_large_blocks - tot_large_multi_objs
-      , tot_large_multi_objs
-      , tot_compact_blocks);
-  fprintf(hp_file, "\tIn transit pinned multi-object blocks:%lu (%lu words)\n"
-      , cur_pinned_blocks
-      , cur_pinned_words);
 
   // XXX See memInventory function in rts/sm/Sanity.c for more ideas.
   /*
@@ -1962,22 +1955,88 @@ void getGCStats(bool verbose)
         , stats.gc.mem_in_use_bytes
         , stats.gc.mem_in_use_bytes / 4096);
   */
-  // allocated at the block allocator level, includes the free blocks in
-  // nursery.
-  W_ n_free_blocks = countFreeListBlocks();
-
-  fprintf(hp_file, "n_alloc_blocks:%lu\n", n_alloc_blocks);
-  // Blocks that are completely free at the block allocator level, not even in
-  // nursery.
-  fprintf(hp_file, "n_free_blocks:%lu\n", n_free_blocks);
   // Blocks allocated at mblock allocator level. These blocks may have free
   // space which is accounted in the free blocks at block level.
-  fprintf(hp_file, "n_alloc_mblocks:%lu\n", mblocks_allocated);
+  if (verbose) {
+    fprintf(hp_file, "---\n");
+  }
+  fprintf(hp_file, "n_alloc_mblocks:%lu (~%lu 4K)\n"
+        , mblocks_allocated
+        , mblocks_allocated * BLOCKS_PER_MBLOCK);
+
+  fprintf(hp_file, " n_alloc_blocks:%lu (%lu%%)\n"
+        , n_alloc_blocks
+        , (n_alloc_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
+
+  W_ n_free_blocks = countFreeListBlocks();
+
+  // Blocks that are completely free at the block allocator level, not
+  // even in nursery, but not contiguous mblocks. fragmented free space
+  // in used mblocks.
+  fprintf(hp_file, " n_free_blocks:%lu (%lu%%)\n"
+        , n_free_blocks
+        , (n_free_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
+
   // Completely free mblocks, none of this space is used anywhere and can be
   // returned to the OS.
   fprintf(hp_file, "n_free_mblocks:%lu\n", countFreeMBlocks());
-  fprintf(hp_file, "fragmented free space in used mblocks:%lu%\n"
-        , (n_free_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
+
+  W_ tot_live =
+        tot_reg_blocks
+      + tot_large_blocks
+      + tot_compact_blocks
+      + cur_pinned_blocks
+      + tot_mut_blocks;
+
+  W_ tot_large_single_blocks = tot_large_blocks - tot_large_multi_objs;
+
+  fprintf(hp_file,
+        "n_alloc_blocks:%lu\n"
+        " live: %lu\n"
+        "  regular: %lu\n"
+        "  large (pinned): %lu\n"
+        "   single-object: %lu\n"
+        "   multi-object: %u\n"
+        "  compact: %lu\n"
+        "  current pinned: %lu\n"
+        "  current mut_lists: %lu\n"
+        " free (nurseries): %lu\n"
+      , n_alloc_blocks
+      , tot_live
+      , tot_reg_blocks
+      , tot_large_blocks
+      , tot_large_single_blocks
+      , tot_large_multi_objs
+      , tot_compact_blocks
+      , cur_pinned_blocks
+      , tot_mut_blocks
+      , n_alloc_blocks - tot_live);
+
+  reportWithUtil ("live bytes", tot_live,
+    tot_live_words + cur_pinned_words + tot_mut_words);
+  reportWithUtil (" regular", tot_reg_blocks, tot_reg_words);
+  reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
+  reportWithUtil ("  others", tot_reg_blocks - tot_gct_blocks,
+      tot_reg_words - tot_gct_words);
+  reportWithUtil (" large (pinned)", tot_large_blocks, tot_large_words);
+  reportWithUtil ("  single-object", tot_large_single_blocks, 0);
+  reportWithUtil ("  multi-object", tot_large_multi_objs, 0);
+  fprintf(hp_file, " compact: %lu\n"
+      , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
+  reportWithUtil (" current pinned", cur_pinned_blocks, cur_pinned_words);
+  reportWithUtil (" current mut_lists", tot_mut_blocks, tot_mut_words);
+
+  fprintf(hp_file,
+        "large (pinned) object count: %u\n"
+        " single: %u\n"
+        " multi: %u\n"
+      , tot_large_objs
+      , tot_large_objs - tot_large_multi_objs
+      , tot_large_multi_objs);
+  if (verbose) {
+    fprintf(hp_file, "compact object count: %u\n", tot_compact_objs);
+  }
+
   /*
   fprintf(hp_file, "live bytes (total,large,compact,slop):%lu,%lu,%lu,%lu\n"
         , stats.gc.live_bytes
