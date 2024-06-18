@@ -1519,7 +1519,7 @@ static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
     }
 
     fprintf(hp_file, "Total Rss: %lu kB\n", total_rss);
-    fprintf(hp_file, " File: %lu kB\n", total_rss - total_anon);
+    fprintf(hp_file, " File maps: %lu kB\n", total_rss - total_anon);
     fprintf(hp_file, " Anonymous: %lu kB\n", total_anon);
     fclose(file);
 }
@@ -1577,6 +1577,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     } else {
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }
+    fprintf(hp_file, "---------Process memory-----------\n");
     getMemMaps(verbose, 256);
     if (verbose) {
         getMemUsage();

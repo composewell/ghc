@@ -1800,7 +1800,6 @@ void getGCStats(bool verbose)
   tot_large_multi_objs = 0;
   tot_compact_objs = 0;
 
-  fprintf(hp_file, "---------Haskell Heap Summary-----------\n");
   for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
       gen = &generations[g];
 
@@ -1870,6 +1869,7 @@ void getGCStats(bool verbose)
       // or slop space. But the alignment should be 0 at the start of a block
       // as it is always perfectly aligned.
       if (verbose) {
+        fprintf(hp_file, "---------Generations Summary-----------\n");
         fprintf(hp_file, "gen %d:\n", g);
 
         W_ gen_large_single_blocks = gen->n_large_blocks - gen_large_multi_objs;
@@ -1957,10 +1957,8 @@ void getGCStats(bool verbose)
   */
   // Blocks allocated at mblock allocator level. These blocks may have free
   // space which is accounted in the free blocks at block level.
-  if (verbose) {
-    fprintf(hp_file, "---\n");
-  }
-  fprintf(hp_file, "n_alloc_mblocks:%lu (~%lu 4K)\n"
+  fprintf(hp_file, "---------MBlock allocator Summary-----------\n");
+  fprintf(hp_file, "n_alloc_mblocks:%lu (~%lu blocks)\n"
         , mblocks_allocated
         , mblocks_allocated * BLOCKS_PER_MBLOCK);
 
@@ -1990,6 +1988,7 @@ void getGCStats(bool verbose)
 
   W_ tot_large_single_blocks = tot_large_blocks - tot_large_multi_objs;
 
+  fprintf(hp_file, "---------Block allocator Summary-----------\n");
   fprintf(hp_file,
         "n_alloc_blocks:%lu\n"
         " live: %lu\n"
@@ -2012,6 +2011,7 @@ void getGCStats(bool verbose)
       , tot_mut_blocks
       , n_alloc_blocks - tot_live);
 
+  fprintf(hp_file, "---------Live Data Summary-----------\n");
   reportWithUtil ("live bytes", tot_live,
     tot_live_words + cur_pinned_words + tot_mut_words);
   reportWithUtil (" regular", tot_reg_blocks, tot_reg_words);
@@ -2026,6 +2026,7 @@ void getGCStats(bool verbose)
   reportWithUtil (" current pinned", cur_pinned_blocks, cur_pinned_words);
   reportWithUtil (" current mut_lists", tot_mut_blocks, tot_mut_words);
 
+  fprintf(hp_file, "---------Large object counts-----------\n");
   fprintf(hp_file,
         "large (pinned) object count: %u\n"
         " single: %u\n"
