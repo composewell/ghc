@@ -1765,28 +1765,32 @@ static void reportWithUtil (char *desc, W_ blocks, W_ words) {
   }
 
   fprintf(hp_file,
-        "%s:%lu/%lu (%lu%% utilized)\n"
+        "%s: %lu/%lu (%lu%%)\n"
       , desc
       , used_bytes
       , bytes
       , percent_bytes);
 }
 
-void getGCStats(bool verbose)
+W_ getGCStats(bool verbose)
 {
   uint32_t g, i;
   uint32_t gen_large_objs, gen_large_multi_objs, gen_compact_objs;
   uint32_t tot_large_objs, tot_compact_objs, tot_large_multi_objs;
   W_ gen_live_words, gen_gcthread_words, cur_pinned_words;
-  W_ tot_live_words, tot_reg_words, tot_large_words, tot_mut_words, tot_gct_words;
+  W_ tot_live_words, tot_reg_words, tot_large_words, tot_mut_words,
+     tot_gct_words, tot_large_multi_words, tot_large_single_words;
   W_ gen_blocks, gen_gcthread_blocks, cur_pinned_blocks;
-  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks, tot_mut_blocks, tot_gct_blocks;
+  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks,
+     tot_mut_blocks, tot_gct_blocks;
   bdescr *bd;
   generation *gen;
 
   tot_live_words = 0;
   tot_reg_words = 0;
   tot_large_words = 0;
+  tot_large_multi_words = 0;
+  tot_large_single_words = 0;
   tot_mut_words = 0;
   tot_gct_words = 0;
 
@@ -1824,7 +1828,12 @@ void getGCStats(bool verbose)
             if (size < LARGE_OBJECT_THRESHOLD &&
                   bd->start + size < bd->free) {
               gen_large_multi_objs++;
+              tot_large_multi_words += bd->free - bd->start;
+            } else {
+              tot_large_single_words += bd->free - bd->start;
             }
+          } else {
+              tot_large_single_words += bd->free - bd->start;
           }
       }
 
@@ -1933,6 +1942,10 @@ void getGCStats(bool verbose)
             cur_pinned_words = bd->free - bd->start;
       }
   }
+  tot_large_blocks += cur_pinned_blocks;
+  tot_large_words += cur_pinned_words;
+  tot_large_multi_objs += cur_pinned_blocks;
+  tot_large_multi_words += cur_pinned_words;
 
   // XXX pinned blocks may have less used space than actually reported,
   // because bd->free is not adjusted when objects become dead. So
@@ -1983,7 +1996,6 @@ void getGCStats(bool verbose)
         tot_reg_blocks
       + tot_large_blocks
       + tot_compact_blocks
-      + cur_pinned_blocks
       + tot_mut_blocks;
 
   W_ tot_large_single_blocks = tot_large_blocks - tot_large_multi_objs;
@@ -1997,7 +2009,6 @@ void getGCStats(bool verbose)
         "   single-object: %lu\n"
         "   multi-object: %u\n"
         "  compact: %lu\n"
-        "  current pinned: %lu\n"
         "  current mut_lists: %lu\n"
         " free (nurseries): %lu\n"
       , n_alloc_blocks
@@ -2007,7 +2018,6 @@ void getGCStats(bool verbose)
       , tot_large_single_blocks
       , tot_large_multi_objs
       , tot_compact_blocks
-      , cur_pinned_blocks
       , tot_mut_blocks
       , n_alloc_blocks - tot_live);
 
@@ -2019,11 +2029,12 @@ void getGCStats(bool verbose)
   reportWithUtil ("  others", tot_reg_blocks - tot_gct_blocks,
       tot_reg_words - tot_gct_words);
   reportWithUtil (" large (pinned)", tot_large_blocks, tot_large_words);
-  reportWithUtil ("  single-object", tot_large_single_blocks, 0);
-  reportWithUtil ("  multi-object", tot_large_multi_objs, 0);
+  reportWithUtil ("  single-object"
+      , tot_large_single_blocks, tot_large_single_words);
+  reportWithUtil ("  multi-object"
+      , tot_large_multi_objs, tot_large_multi_words);
   fprintf(hp_file, " compact: %lu\n"
       , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
-  reportWithUtil (" current pinned", cur_pinned_blocks, cur_pinned_words);
   reportWithUtil (" current mut_lists", tot_mut_blocks, tot_mut_words);
 
   fprintf(hp_file, "---------Large object counts-----------\n");
@@ -2036,6 +2047,12 @@ void getGCStats(bool verbose)
       , tot_large_multi_objs);
   if (verbose) {
     fprintf(hp_file, "compact object count: %u\n", tot_compact_objs);
+  }
+
+  if (tot_large_words != tot_large_multi_words + tot_large_single_words) {
+    barf ("tot_large_words %lu != tot_large_multi_words %lu + "
+          "tot_large_single_words %lu\n",
+          tot_large_words, tot_large_multi_words, tot_large_single_words);
   }
 
   /*
@@ -2078,10 +2095,12 @@ void getGCStats(bool verbose)
     }
     fprintf(hp_file, "\n");
   }
+
+  return (tot_large_multi_words);
 }
 
 void liveDiff(size_t bytes) {
-    fprintf(hp_file, "live bytes deviation: %ld\n",
+    fprintf(hp_file, "stats.gc.live_bytes - live_bytes: %ld\n",
           stats.gc.live_bytes - bytes);
 }
 

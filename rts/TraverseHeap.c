@@ -96,6 +96,12 @@ typedef struct {
     nextPos next;
 } stackPos;
 
+typedef struct {
+  size_t total_size;
+  size_t large_size;
+  size_t small_pinned_size;
+} traversalStats;
+
 /**
  * An element of the traversal work-stack. Besides the closure itself this also
  * stores it's parent and associated data.
@@ -118,11 +124,11 @@ typedef struct stackElement_ {
     // want to skip printing the node as well.
     //
     // When traversing we keep the aggregate size of all the children of
-    // the node in se_subtree_size. When we start traversing a child we save
-    // the parent's se_subtree_size in se_parent_size so that we can use
-    // se_subtree_size for the children of the current node.
-    int se_parent_size;
-    int se_subtree_size;
+    // the node in se_subtree_stats. When we start traversing a child we save
+    // the parent's se_subtree_stats in se_parent_stats so that we can use
+    // se_subtree_stats for the children of the current node.
+    traversalStats se_parent_stats;
+    traversalStats se_subtree_stats;
     int se_dup_count;
     int se_level;
     bool se_done;
@@ -355,6 +361,53 @@ pushStackElement(traverseState *ts, const stackElement se)
     debug("stackSize = %d\n", ts->stackSize);
 }
 
+static void initTraversalStats (traversalStats *stats) {
+    stats->total_size = 0;
+    stats->large_size = 0;
+    stats->small_pinned_size = 0;
+}
+
+static bool isClosurePinned (StgClosure *c) {
+    StgPtr p = (StgPtr)c;
+    bdescr *bd;
+
+    bd = Bdescr(p);
+    return ((bd->flags & (BF_PINNED | BF_LARGE | BF_COMPACT)) != 0);
+}
+
+static void updateTraversalStats (traversalStats *dst, StgClosure *c, size_t size) {
+    dst->total_size += size;
+    if (size * sizeof(W_) >= LARGE_OBJECT_THRESHOLD) {
+      dst->large_size += size;
+    } else {
+      if (isClosurePinned (c)) {
+        dst->small_pinned_size += size;
+      }
+    }
+}
+
+static traversalStats addTraversalStats (traversalStats *dst, traversalStats *src) {
+    traversalStats stats;
+
+    stats.total_size = dst->total_size + src->total_size;
+    stats.large_size = dst->large_size + src->large_size;
+    stats.small_pinned_size = dst->small_pinned_size + src->small_pinned_size;
+
+    return stats;
+}
+
+static void accTraversalStats (traversalStats *dst, traversalStats *src) {
+    dst->total_size += src->total_size;
+    dst->large_size += src->large_size;
+    dst->small_pinned_size += src->small_pinned_size;
+}
+
+static bool checkTraversalStats (traversalStats *stats) {
+    return (stats->total_size == 0 &&
+      stats->large_size == 0 &&
+      stats->small_pinned_size == 0);
+}
+
 /**
  * Push a single closure onto the traversal work-stack.
  *
@@ -372,8 +425,8 @@ traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp,
     se.info.type = posTypeFresh;
     se.se_level = level;
     se.se_done = false;
-    se.se_parent_size = 0;
-    se.se_subtree_size = 0;
+    initTraversalStats (&se.se_parent_stats);
+    initTraversalStats (&se.se_subtree_stats);
     se.se_dup_count = 0;
 
     pushStackElement(ts, se);
@@ -381,7 +434,8 @@ traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp,
 
 /* A dummy frame to indicate that a tree level is done */
 static inline void
-traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level, size_t cur_size, traverseState *ts) {
+traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level,
+      traversalStats cur_stats, traverseState *ts) {
     stackElement se;
 
     se.c = c;
@@ -390,8 +444,8 @@ traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level, size_
     se.info.type = 0; // XXX ?
     se.se_level = level;
     se.se_done = true;
-    se.se_parent_size = cur_size;
-    se.se_subtree_size = 0;
+    se.se_parent_stats = cur_stats;
+    initTraversalStats (&se.se_subtree_stats);
     se.se_dup_count = 0;
 
     pushStackElement(ts, se);
@@ -705,7 +759,8 @@ static bool collapseDuplicates = 1;
 // and all its children.
 //
 // CAUTION: modifies the ts->stackTop->se_dup_count.
-static void printNode (bool first_visit, traverseState *ts, stackElement *se, int cur_level, size_t cur_size) {
+static void printNode (bool first_visit, traverseState *ts, stackElement *se,
+    int cur_level, traversalStats cur_stats) {
 
     bool shouldReportRevisit = false;
     if (!first_visit && !shouldReportRevisit) {
@@ -755,13 +810,15 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se, in
           , GET_PROF_TYPE(info)
           , GET_PROF_DESC(info)
           , (StgWord64) c_untagged->header.prof.ccs);
+    // XXX If total_size == large_size or small_pinned_size, then mark
+    // it pinned
     if (se->se_dup_count > 0) {
       fprintf (hp_file, " %lu (x%d) [%lu]"
               , cl_size
               , (se->se_dup_count+1)
-              , cur_size);
+              , cur_stats.total_size);
     } else {
-      fprintf (hp_file, " %lu [%lu]", cl_size, cur_size);
+      fprintf (hp_file, " %lu [%lu]", cl_size, cur_stats.total_size);
     }
     if (first_visit) {
       fprintf (hp_file, "\n");
@@ -782,10 +839,10 @@ bool traverseIsFirstVisit(StgClosure *c);
 // can be avoided.
 // XXX We can also implement generational gc at a finer granularity using gcid
 // as the generation.
-uint64_t gcDiffNewest = 10;
+uint64_t gcDiffNewest = 0;
 uint64_t gcDiffOldest = 20;
-uint64_t gcAbsOldest = 10;
-enum ReportType report = GC_WINDOW;
+uint64_t gcAbsOldest = 0;
+enum ReportType report = GC_SINCE;
 bool isReportVerbose = false;
 
 // In words.
@@ -847,13 +904,13 @@ static bool filterClosure (StgClosure *c, size_t size) {
  *
  *    It is okay to call this function even when the work-stack is empty.
  *
- *  cur_size is always the current subtree size. The size of the tree before
+ *  cur_stats is always the current subtree size. The size of the tree before
  *  this subtree is stored in se_size. As we come up from a subtree we add the
  *  size to the parent's se_size.
  */
 STATIC_INLINE void
 traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
-    int *cur_level, size_t *cur_size, stackElement **pse)
+    int *cur_level, traversalStats *cur_stats, stackElement **pse)
 {
     stackElement *se;
 
@@ -903,17 +960,18 @@ begin:
             if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
                 size_t cl_size = getClosureSize(c_untagged);
                 if (filterClosure (c_untagged, cl_size)) {
-                  *cur_size = *cur_size + cl_size;
+                  updateTraversalStats (cur_stats, c_untagged, cl_size);
                 }
             }
 
-            if (*cur_size > 0 || se->se_subtree_size > 0) {
-              printNode (true, ts, se, *cur_level, *cur_size + (size_t)se->se_subtree_size);
+            if (cur_stats->total_size > 0 || se->se_subtree_stats.total_size > 0) {
+              printNode (true, ts, se, *cur_level,
+                    addTraversalStats(cur_stats, &se->se_subtree_stats));
             }
 
-            // cur_size is carried forward and aggregated in the parent
+            // cur_stats is carried forward and aggregated in the parent
             // This is the running total.
-            *cur_size = *cur_size + se->se_parent_size;
+            accTraversalStats (cur_stats, &se->se_parent_stats);
 
             *c = NULL;
             continue;
@@ -925,8 +983,8 @@ begin:
             *c = se->c;
             *data = se->data;
             popStackElement(ts);
-            if (se->se_parent_size != 0) {
-              barf ("se_parent_size != 0 for a fresh node");
+            if (!checkTraversalStats(&se->se_parent_stats)) {
+              barf ("se_parent_stats != 0 for a fresh node");
             }
 
             StgClosure *c_untagged;
@@ -946,7 +1004,8 @@ begin:
                 , GET_PROF_TYPE(info)
                 , GET_PROF_DESC(info));
               */
-              printNode (false, ts, se, *cur_level, *cur_size + (size_t)se->se_subtree_size);
+              printNode (false, ts, se, *cur_level,
+                    addTraversalStats(cur_stats, &se->se_subtree_stats));
               *c = NULL;
               continue;
             }
@@ -1129,9 +1188,9 @@ out:
       *cp = se->c;
       *data = se->data;
 
-      se->se_parent_size += *cur_size;
-      se->se_subtree_size += *cur_size;
-      *cur_size = 0;
+      accTraversalStats (&se->se_parent_stats, cur_stats);
+      accTraversalStats (&se->se_subtree_stats, cur_stats);
+      initTraversalStats (cur_stats);
     } else {
         /*
         const StgInfoTable *info = get_itbl(c_untagged);
@@ -1142,7 +1201,7 @@ out:
           , GET_PROF_TYPE(info)
           , GET_PROF_DESC(info));
         */
-        printNode (false, ts, se, *cur_level, *cur_size + (size_t)se->se_subtree_size);
+        printNode (false, ts, se, *cur_level, addTraversalStats(cur_stats, &se->se_subtree_stats));
         goto begin;
     }
 
@@ -1538,7 +1597,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     stackData data, child_data;
     StgWord typeOfc;
     int cur_level = 0;
-    size_t cur_size = 0;
+    traversalStats cur_stats;
     // XXX these can overflow, we should reset them every time.
     uint32_t any = timesAnyObjectVisited;
     uint32_t total = numObjectVisited;
@@ -1547,6 +1606,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     stackElement *se;
     bool verbose = isReportVerbose;
 
+    initTraversalStats (&cur_stats);
     // Now we flip the flip bit.
     flip = flip ^ 1;
 
@@ -1582,7 +1642,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     if (verbose) {
         getMemUsage();
     }
-    getGCStats(verbose);
+    W_ tlmw = getGCStats(verbose);
     fprintf(hp_file, "---------Haskell Heap Details-----------\n");
     fprintf (hp_file, "flip: {%lu}\n" , flip);
     /*
@@ -1596,7 +1656,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // data_out = data to associate with current closure's children
 
 loop:
-    traversePop(ts, &c, &cp, &data, &cur_level, &cur_size, &se);
+    traversePop(ts, &c, &cp, &data, &cur_level, &cur_stats, &se);
 
     if (c == NULL) {
 
@@ -1606,8 +1666,36 @@ loop:
         fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
         fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
         fprintf (hp_file, "total bytes: %lu (%lu words)\n"
-              , cur_size * sizeof(W_), cur_size);
-        liveDiff(cur_size * sizeof(W_));
+              , cur_stats.total_size * sizeof(W_), cur_stats.total_size);
+
+        W_ pinned_size = cur_stats.large_size + cur_stats.small_pinned_size;
+        W_ unpinned_size = cur_stats.total_size - pinned_size;
+        fprintf (hp_file, " unpinned: %lu (%lu words)\n"
+              , unpinned_size * sizeof(W_), unpinned_size);
+        fprintf (hp_file, " pinned: %lu (%lu words)\n"
+              , pinned_size * sizeof(W_), pinned_size);
+        fprintf (hp_file, "  large: %lu (%lu words)\n"
+              , cur_stats.large_size * sizeof(W_), cur_stats.large_size);
+        fprintf (hp_file, "  small: %lu (%lu words)\n"
+              , cur_stats.small_pinned_size * sizeof(W_)
+              , cur_stats.small_pinned_size);
+
+        W_ frag_loss;
+        if (tlmw > cur_stats.small_pinned_size) {
+            frag_loss = tlmw - cur_stats.small_pinned_size;
+        } else {
+          frag_loss = 0;
+        }
+
+        W_ frag_pct;
+        if (tlmw != 0) {
+          frag_pct = (frag_loss * 100) / tlmw;
+        } else {
+          frag_pct = 0;
+        }
+        fprintf (hp_file, "small pinned fragmentation loss: %lu (%lu words)(%lu%%)\n"
+              , frag_loss * sizeof(W_), frag_loss, frag_pct);
+        liveDiff(cur_stats.total_size * sizeof(W_));
         if (cur_level != 0) {
           barf("Traversal loop ended at cur_level: %d\n", cur_level);
         }
@@ -1622,7 +1710,7 @@ inner_loop:
     c_untagged = UNTAG_CLOSURE(c);
     if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
       if (traverseIsFirstVisit(c_untagged) == 0) {
-        printNode (false, ts, se, cur_level, cur_size + (size_t)se->se_subtree_size);
+        printNode (false, ts, se, cur_level, addTraversalStats(&cur_stats, &se->se_subtree_stats));
         goto loop;
       }
     }
@@ -1641,8 +1729,8 @@ inner_loop:
 
     case IND_STATIC:
         cur_level = cur_level + 1;
-        traversePushDone(c, NULL, child_data, cur_level, cur_size, ts);
-        cur_size = 0;
+        traversePushDone(c, NULL, child_data, cur_level, cur_stats, ts);
+        initTraversalStats (&cur_stats);
 
         // We just skip IND_STATIC, so it's never visited.
         c = ((StgIndStatic *)c)->indirectee;
@@ -1651,7 +1739,7 @@ inner_loop:
           goto inner_loop;
         } else {
           // XXX do not print if static
-          printNode (false, ts, se, cur_level, cur_size + (size_t)se->se_subtree_size);
+          printNode (false, ts, se, cur_level, addTraversalStats(&cur_stats, &se->se_subtree_stats));
           goto loop;
         }
 
@@ -1711,8 +1799,8 @@ inner_loop:
     bool traverse_children
         = visit_cb(c, cp, data, first_visit, (stackData*)&child_data);
     cur_level = cur_level + 1;
-    traversePushDone (c, cp, child_data, cur_level, cur_size, ts);
-    cur_size = 0;
+    traversePushDone (c, cp, child_data, cur_level, cur_stats, ts);
+    initTraversalStats (&cur_stats);
     if(!traverse_children) {
         goto loop;
     }

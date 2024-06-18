@@ -120,7 +120,7 @@ typedef struct RTSSummaryStats_ {
 
 StgWord64 getGCCPUStats(void);
 uint32_t getNumGcs(void);
-void getGCStats(bool verbose);
+W_ getGCStats(bool verbose);
 void liveDiff(size_t bytes);
 
 #include "EndPrivate.h"
