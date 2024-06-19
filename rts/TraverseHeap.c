@@ -96,8 +96,10 @@ typedef struct {
     nextPos next;
 } stackPos;
 
+// XXX Optimize the stack usage
 typedef struct {
   size_t total_size;
+  size_t filtered_size;
   size_t large_size;
   size_t small_pinned_size;
 } traversalStats;
@@ -363,6 +365,7 @@ pushStackElement(traverseState *ts, const stackElement se)
 
 static void initTraversalStats (traversalStats *stats) {
     stats->total_size = 0;
+    stats->filtered_size = 0;
     stats->large_size = 0;
     stats->small_pinned_size = 0;
 }
@@ -390,6 +393,7 @@ static traversalStats addTraversalStats (traversalStats *dst, traversalStats *sr
     traversalStats stats;
 
     stats.total_size = dst->total_size + src->total_size;
+    stats.filtered_size = dst->filtered_size + src->filtered_size;
     stats.large_size = dst->large_size + src->large_size;
     stats.small_pinned_size = dst->small_pinned_size + src->small_pinned_size;
 
@@ -398,12 +402,14 @@ static traversalStats addTraversalStats (traversalStats *dst, traversalStats *sr
 
 static void accTraversalStats (traversalStats *dst, traversalStats *src) {
     dst->total_size += src->total_size;
+    dst->filtered_size += src->filtered_size;
     dst->large_size += src->large_size;
     dst->small_pinned_size += src->small_pinned_size;
 }
 
 static bool checkTraversalStats (traversalStats *stats) {
     return (stats->total_size == 0 &&
+      stats->filtered_size == 0 &&
       stats->large_size == 0 &&
       stats->small_pinned_size == 0);
 }
@@ -865,25 +871,27 @@ static bool filterClosure (StgClosure *c, size_t size) {
     uint64_t curGC = (uint64_t) getNumGcs() - 1;
     uint64_t gcid = (StgWord64) c->header.prof.ccs;
 
-    if (size >= sizeThreshold) {
-      switch (report) {
-        case GC_WINDOW:
-          if (gcid < curGC - gcDiffOldest || gcid > curGC - gcDiffNewest) {
-            return false;
-          }
-          break;
-        case GC_SINCE:
-          if (gcid < gcAbsOldest || gcid > curGC - gcDiffNewest) {
-            return false;
-          }
-          break;
-        default: barf("filterClosure: unhandled report type\n");
-      }
+    if (size < sizeThreshold) {
+      return false;
+    }
 
-      // XXX Reuse the isClosurePinned result from previous test?
-      if (enableUnpinned == false && !isClosurePinned(c)) {
-        return false;
-      }
+    switch (report) {
+      case GC_WINDOW:
+        if (gcid < curGC - gcDiffOldest || gcid > curGC - gcDiffNewest) {
+          return false;
+        }
+        break;
+      case GC_SINCE:
+        if (gcid < gcAbsOldest || gcid > curGC - gcDiffNewest) {
+          return false;
+        }
+        break;
+      default: barf("filterClosure: unhandled report type\n");
+    }
+
+    // XXX Reuse the isClosurePinned result from previous test?
+    if (enableUnpinned == false && !isClosurePinned(c)) {
+      return false;
     }
 
     return true;
@@ -965,12 +973,13 @@ begin:
             c_untagged = UNTAG_CLOSURE(se->c);
             if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
                 size_t cl_size = getClosureSize(c_untagged);
+                updateTraversalStats (cur_stats, c_untagged, cl_size);
                 if (filterClosure (c_untagged, cl_size)) {
-                  updateTraversalStats (cur_stats, c_untagged, cl_size);
+                  cur_stats->filtered_size += cl_size;
                 }
             }
 
-            if (cur_stats->total_size > 0 || se->se_subtree_stats.total_size > 0) {
+            if (cur_stats->filtered_size > 0 || se->se_subtree_stats.filtered_size > 0) {
               printNode (true, ts, se, *cur_level,
                     addTraversalStats(cur_stats, &se->se_subtree_stats));
             }
@@ -1671,6 +1680,8 @@ loop:
 
         fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
         fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
+        fprintf (hp_file, "filtered bytes: %lu (%lu words)\n"
+              , cur_stats.filtered_size * sizeof(W_), cur_stats.filtered_size);
         fprintf (hp_file, "total bytes: %lu (%lu words)\n"
               , cur_stats.total_size * sizeof(W_), cur_stats.total_size);
 
