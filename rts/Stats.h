@@ -119,13 +119,15 @@ typedef struct RTSSummaryStats_ {
 } RTSSummaryStats;
 
 typedef struct {
-  W_ live_blocks;
   W_ live_words;
+  W_ regular_words;
   W_ small_pinned_words;
+  W_ large_pinned_words;
 } gcStats;
 
 StgWord64 getGCCPUStats(void);
 uint32_t getNumGcs(void);
+void reportWithUtilWords (char *desc, W_ total_words, W_ used_words);
 gcStats getGCStats(bool verbose);
 void liveDiff(size_t bytes);
 

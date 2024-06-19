@@ -1753,9 +1753,9 @@ uint32_t getNumGcs(void)
 
 extern size_t getClosureSize(const StgClosure *p);
 
-static void reportWithUtil (char *desc, W_ blocks, W_ words) {
-  W_ bytes = blocks * BLOCK_SIZE_W * sizeof(W_);
-  W_ used_bytes = words * sizeof(W_);
+void reportWithUtilWords (char *desc, W_ total_words, W_ used_words) {
+  W_ bytes = total_words * sizeof(W_);
+  W_ used_bytes = used_words * sizeof(W_);
   W_ percent_bytes;
 
   if (bytes != 0) {
@@ -1770,6 +1770,12 @@ static void reportWithUtil (char *desc, W_ blocks, W_ words) {
       , used_bytes
       , bytes
       , percent_bytes);
+}
+
+static void reportWithUtil (char *desc, W_ blocks, W_ used_words) {
+  W_ total_words = blocks * BLOCK_SIZE_W;
+
+  reportWithUtilWords (desc, total_words, used_words);
 }
 
 gcStats getGCStats(bool verbose)
@@ -1884,11 +1890,11 @@ gcStats getGCStats(bool verbose)
         W_ gen_large_single_blocks = gen->n_large_blocks - gen_large_multi_objs;
 
         fprintf(hp_file,
-              " live blocks: %lu\n"
+              " used blocks: %lu\n"
               "  regular: %lu\n"
               "  large (pinned): %lu\n"
-              "   single-object: %lu\n"
-              "   multi-object: %u\n"
+              "   single: %lu\n"
+              "   multi: %u\n"
               "  compact:%lu\n"
             , gen_blocks
             , gen->n_blocks + gen_gcthread_blocks
@@ -1897,18 +1903,18 @@ gcStats getGCStats(bool verbose)
             , gen_large_multi_objs
             , gen->n_compact_blocks);
 
-        reportWithUtil (" live bytes", gen_blocks, gen_live_words);
+        reportWithUtil (" used/total bytes", gen_blocks, gen_live_words);
         reportWithUtil ("  regular"
               , gen->n_blocks + gen_gcthread_blocks
               , gen->n_words + gen_gcthread_words);
+        reportWithUtil ("   generation", gen->n_blocks , gen->n_words);
         reportWithUtil ("   gcthreads"
               , gen_gcthread_blocks, gen_gcthread_words);
-        reportWithUtil ("   others", gen->n_blocks , gen->n_words);
         reportWithUtil ("  large (pinned)"
               , gen->n_large_blocks, gen->n_large_words);
-        reportWithUtil ("   single-object"
+        reportWithUtil ("   single"
               , gen_large_single_blocks, 0);
-        reportWithUtil ("   multi-object"
+        reportWithUtil ("   multi"
               , gen_large_multi_objs, 0);
         fprintf(hp_file, "  compact: %lu\n"
             , gen->n_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
@@ -2005,13 +2011,13 @@ gcStats getGCStats(bool verbose)
   fprintf(hp_file, "---------Block allocator Summary-----------\n");
   fprintf(hp_file,
         "n_alloc_blocks:%lu\n"
-        " live: %lu\n"
+        " used: %lu\n"
         "  regular: %lu\n"
         "  large (pinned): %lu\n"
-        "   single-object: %lu\n"
-        "   multi-object: %u\n"
+        "   single: %lu\n"
+        "   multi: %u\n"
         "  compact: %lu\n"
-        "  current mut_lists: %lu\n"
+        "  mut_lists: %lu\n"
         " free (nurseries): %lu\n"
       , n_alloc_blocks
       , tot_live_blocks
@@ -2023,20 +2029,20 @@ gcStats getGCStats(bool verbose)
       , tot_mut_blocks
       , n_alloc_blocks - tot_live_blocks);
 
-  fprintf(hp_file, "---------Live Data Summary-----------\n");
-  reportWithUtil ("live bytes", tot_live_blocks, tot_live_words);
+  fprintf(hp_file, "---------Block Level Used/Total-----------\n");
+  reportWithUtil ("used/total bytes", tot_live_blocks, tot_live_words);
   reportWithUtil (" regular", tot_reg_blocks, tot_reg_words);
-  reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
-  reportWithUtil ("  others", tot_reg_blocks - tot_gct_blocks,
+  reportWithUtil ("  generations", tot_reg_blocks - tot_gct_blocks,
       tot_reg_words - tot_gct_words);
+  reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
   reportWithUtil (" large (pinned)", tot_large_blocks, tot_large_words);
-  reportWithUtil ("  single-object"
+  reportWithUtil ("  single"
       , tot_large_single_blocks, tot_large_single_words);
-  reportWithUtil ("  multi-object"
+  reportWithUtil ("  multi"
       , tot_large_multi_objs, tot_large_multi_words);
   fprintf(hp_file, " compact: %lu\n"
       , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
-  reportWithUtil (" current mut_lists", tot_mut_blocks, tot_mut_words);
+  reportWithUtil (" mut_lists", tot_mut_blocks, tot_mut_words);
 
   fprintf(hp_file, "---------Large object counts-----------\n");
   fprintf(hp_file,
@@ -2100,9 +2106,10 @@ gcStats getGCStats(bool verbose)
   */
 
   gcStats st;
-  st.live_blocks = tot_live_blocks;
   st.live_words = tot_live_words;
+  st.regular_words = tot_reg_words;
   st.small_pinned_words = tot_large_multi_words;
+  st.large_pinned_words = tot_large_single_words;
   return st;
 }
 
