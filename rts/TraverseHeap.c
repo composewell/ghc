@@ -851,10 +851,10 @@ bool traverseIsFirstVisit(StgClosure *c);
 // can be avoided.
 // XXX We can also implement generational gc at a finer granularity using gcid
 // as the generation.
-uint64_t gcDiffNewest = 0;
+uint64_t gcDiffNewest = 10;
 uint64_t gcDiffOldest = 20;
-uint64_t gcAbsOldest = 0;
-enum ReportType report = GC_SINCE;
+uint64_t gcAbsOldest = 10;
+enum ReportType report = GC_WINDOW;
 bool isReportVerbose = false;
 
 // In words.
