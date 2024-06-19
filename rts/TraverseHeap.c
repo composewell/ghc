@@ -848,6 +848,7 @@ bool isReportVerbose = false;
 // In words.
 // uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
 uint64_t sizeThreshold = 0;
+bool enableUnpinned = true;
 
 static const char* stringifyReportType(enum ReportType rep)
 {
@@ -867,20 +868,25 @@ static bool filterClosure (StgClosure *c, size_t size) {
     if (size >= sizeThreshold) {
       switch (report) {
         case GC_WINDOW:
-          return
-              (  gcid >= curGC - gcDiffOldest
-              && gcid <= curGC - gcDiffNewest
-              );
+          if (gcid < curGC - gcDiffOldest || gcid > curGC - gcDiffNewest) {
+            return false;
+          }
+          break;
         case GC_SINCE:
-          return
-              (  gcid >= gcAbsOldest
-              && gcid <= curGC - gcDiffNewest
-              );
+          if (gcid < gcAbsOldest || gcid > curGC - gcDiffNewest) {
+            return false;
+          }
+          break;
         default: barf("filterClosure: unhandled report type\n");
+      }
+
+      // XXX Reuse the isClosurePinned result from previous test?
+      if (enableUnpinned == false && !isClosurePinned(c)) {
+        return false;
       }
     }
 
-    return false;
+    return true;
 }
 
 /**
