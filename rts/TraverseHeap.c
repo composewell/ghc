@@ -816,8 +816,6 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se,
           , GET_PROF_TYPE(info)
           , GET_PROF_DESC(info)
           , (StgWord64) c_untagged->header.prof.ccs);
-    // XXX If total_size == large_size or small_pinned_size, then mark
-    // it pinned
     if (se->se_dup_count > 0) {
       fprintf (hp_file, " %lu (x%d) [%lu]"
               , cl_size
@@ -826,6 +824,14 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se,
     } else {
       fprintf (hp_file, " %lu [%lu]", cl_size, cur_stats.total_size);
     }
+
+    // XXX we can mark COMPACT as well if required.
+    if (cur_stats.total_size == cur_stats.large_size) {
+      fprintf (hp_file, " LARGE");
+    } else if (cur_stats.total_size == cur_stats.small_pinned_size) {
+      fprintf (hp_file, " PINNED");
+    }
+
     if (first_visit) {
       fprintf (hp_file, "\n");
     } else {
