@@ -1598,6 +1598,24 @@ static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
     fclose(file);
 }
 
+static void reportPercent (char * desc, W_ a, W_ b) {
+    W_ loss;
+    if (a > b) {
+        loss = a - b;
+    } else {
+      loss = 0;
+    }
+
+    W_ pct;
+    if (a != 0) {
+      pct = (loss * 100) / a;
+    } else {
+      pct = 0;
+    }
+    fprintf (hp_file, "%s: %lu (%lu words)(%lu%%)\n"
+          , desc, loss * sizeof(W_), loss, pct);
+}
+
 /**
  * Traverse all closures on the traversal work-stack, calling 'visit_cb' on each
  * closure. See 'visitClosure_cb' for details. This function flips the 'flip'
@@ -1657,7 +1675,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     if (verbose) {
         getMemUsage();
     }
-    W_ tlmw = getGCStats(verbose);
+    gcStats gcstats = getGCStats(verbose);
     fprintf(hp_file, "---------Haskell Heap Details-----------\n");
     fprintf (hp_file, "flip: {%lu}\n" , flip);
     /*
@@ -1697,22 +1715,15 @@ loop:
               , cur_stats.small_pinned_size * sizeof(W_)
               , cur_stats.small_pinned_size);
 
-        W_ frag_loss;
-        if (tlmw > cur_stats.small_pinned_size) {
-            frag_loss = tlmw - cur_stats.small_pinned_size;
-        } else {
-          frag_loss = 0;
+        reportPercent ("dead pinned bytes"
+              , gcstats.small_pinned_words, cur_stats.small_pinned_size);
+        reportPercent ("non-slop wasted bytes"
+              , gcstats.live_words, cur_stats.total_size);
+        reportPercent ("total wasted bytes"
+              , gcstats.live_blocks * BLOCK_SIZE_W, cur_stats.total_size);
+        if (verbose) {
+          liveDiff(cur_stats.total_size * sizeof(W_));
         }
-
-        W_ frag_pct;
-        if (tlmw != 0) {
-          frag_pct = (frag_loss * 100) / tlmw;
-        } else {
-          frag_pct = 0;
-        }
-        fprintf (hp_file, "small pinned fragmentation loss: %lu (%lu words)(%lu%%)\n"
-              , frag_loss * sizeof(W_), frag_loss, frag_pct);
-        liveDiff(cur_stats.total_size * sizeof(W_));
         if (cur_level != 0) {
           barf("Traversal loop ended at cur_level: %d\n", cur_level);
         }

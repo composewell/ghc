@@ -118,9 +118,15 @@ typedef struct RTSSummaryStats_ {
     GenerationSummaryStats* gc_summary_stats;
 } RTSSummaryStats;
 
+typedef struct {
+  W_ live_blocks;
+  W_ live_words;
+  W_ small_pinned_words;
+} gcStats;
+
 StgWord64 getGCCPUStats(void);
 uint32_t getNumGcs(void);
-W_ getGCStats(bool verbose);
+gcStats getGCStats(bool verbose);
 void liveDiff(size_t bytes);
 
 #include "EndPrivate.h"

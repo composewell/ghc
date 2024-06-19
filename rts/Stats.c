@@ -1772,7 +1772,7 @@ static void reportWithUtil (char *desc, W_ blocks, W_ words) {
       , percent_bytes);
 }
 
-W_ getGCStats(bool verbose)
+gcStats getGCStats(bool verbose)
 {
   uint32_t g, i;
   uint32_t gen_large_objs, gen_large_multi_objs, gen_compact_objs;
@@ -1923,6 +1923,7 @@ W_ getGCStats(bool verbose)
         fprintf(hp_file, " compact object count: %u\n", gen_compact_objs);
       }
   }
+  tot_live_words += tot_mut_words;
 
   // XXX How is a pinned block freed? How do we know that all pinned objects in
   // a pinned block are dead?
@@ -1942,6 +1943,7 @@ W_ getGCStats(bool verbose)
             cur_pinned_words = bd->free - bd->start;
       }
   }
+  tot_live_words += cur_pinned_words;
   tot_large_blocks += cur_pinned_blocks;
   tot_large_words += cur_pinned_words;
   tot_large_multi_objs += cur_pinned_blocks;
@@ -1992,7 +1994,7 @@ W_ getGCStats(bool verbose)
   // returned to the OS.
   fprintf(hp_file, "n_free_mblocks:%lu\n", countFreeMBlocks());
 
-  W_ tot_live =
+  W_ tot_live_blocks =
         tot_reg_blocks
       + tot_large_blocks
       + tot_compact_blocks
@@ -2012,18 +2014,17 @@ W_ getGCStats(bool verbose)
         "  current mut_lists: %lu\n"
         " free (nurseries): %lu\n"
       , n_alloc_blocks
-      , tot_live
+      , tot_live_blocks
       , tot_reg_blocks
       , tot_large_blocks
       , tot_large_single_blocks
       , tot_large_multi_objs
       , tot_compact_blocks
       , tot_mut_blocks
-      , n_alloc_blocks - tot_live);
+      , n_alloc_blocks - tot_live_blocks);
 
   fprintf(hp_file, "---------Live Data Summary-----------\n");
-  reportWithUtil ("live bytes", tot_live,
-    tot_live_words + cur_pinned_words + tot_mut_words);
+  reportWithUtil ("live bytes", tot_live_blocks, tot_live_words);
   reportWithUtil (" regular", tot_reg_blocks, tot_reg_words);
   reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
   reportWithUtil ("  others", tot_reg_blocks - tot_gct_blocks,
@@ -2064,6 +2065,7 @@ W_ getGCStats(bool verbose)
   */
   //fprintf(hp_file, "---------End of Haskell Heap Summary-----------\n");
 
+  /*
   if (verbose) {
     // Only blocks with multiple objects can cause block level
     // fragmentation.  Large object blocks can cause mega block level
@@ -2095,8 +2097,13 @@ W_ getGCStats(bool verbose)
     }
     fprintf(hp_file, "\n");
   }
+  */
 
-  return (tot_large_multi_words);
+  gcStats st;
+  st.live_blocks = tot_live_blocks;
+  st.live_words = tot_live_words;
+  st.small_pinned_words = tot_large_multi_words;
+  return st;
 }
 
 void liveDiff(size_t bytes) {
