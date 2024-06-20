@@ -853,10 +853,13 @@ uint64_t gcDiffOldest = 20;
 uint64_t gcAbsOldest = 10;
 enum ReportType report = GC_WINDOW;
 bool isReportVerbose = false;
+bool enable_fine_grained_pinned = true;
 
-// In words.
+// In words. Display only objects larger than this.
 // uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
 uint64_t sizeThreshold = 0;
+// When set to false, do not display unpinned blocks, only pinned are
+// displayed.
 bool enableUnpinned = true;
 
 static const char* stringifyReportType(enum ReportType rep)
@@ -1459,6 +1462,9 @@ traversePAP (int level, traverseState *ts,
     return p;
 }
 
+extern uint32_t numObjectVisited;
+extern uint32_t timesAnyObjectVisited;
+
 static void
 resetMutableObjects(int cur_level, traversalStats *cur_stats)
 {
@@ -1482,12 +1488,12 @@ resetMutableObjects(int cur_level, traversalStats *cur_stats)
           for (bd = capabilities[n]->mut_lists[g]; bd != NULL; bd = bd->link) {
             for (ml = bd->start; ml < bd->free; ml++) {
                 bool first_visit = traverseMaybeInitClosureData((StgClosure *)*ml);
-                //timesAnyObjectVisited++;
+                timesAnyObjectVisited++;
                 if (first_visit) {
                   StgClosure *c_untagged = UNTAG_CLOSURE((StgClosure *)*ml);
                   const StgInfoTable *info = get_itbl(c_untagged);
                   // fprintf (stderr, "----------> mut object missed\n");
-                  //numObjectVisited++;
+                  numObjectVisited++;
                   if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
                       size_t cl_size = getClosureSize(c_untagged);
                       updateTraversalStats (cur_stats, c_untagged, cl_size);
@@ -1512,9 +1518,6 @@ resetMutableObjects(int cur_level, traversalStats *cur_stats)
         }
     }
 }
-
-extern uint32_t numObjectVisited;
-extern uint32_t timesAnyObjectVisited;
 
 static void getMemUsage(void) {
     FILE *file;
@@ -1687,7 +1690,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     if (verbose) {
         getMemUsage();
     }
-    gcStats gcstats = getGCStats(verbose);
+    gcStats gcstats = getGCStats(verbose, enable_fine_grained_pinned);
     fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
     fprintf (hp_file, "flip: {%lu}\n" , flip);
     /*
@@ -1722,14 +1725,16 @@ loop:
         reportWithUtilWords (" regular"
               , gcstats.regular_words, unpinned_size);
         reportWithUtilWords (" large (pinned)"
-              , gcstats.large_pinned_words + gcstats.small_pinned_words
+              , gcstats.large_words
               , pinned_size);
-        reportWithUtilWords ("  single"
-              , gcstats.large_pinned_words
-              , cur_stats.large_size);
-        reportWithUtilWords ("  multi"
-              , gcstats.small_pinned_words
-              , cur_stats.small_pinned_size);
+        if (enable_fine_grained_pinned) {
+          reportWithUtilWords ("  single"
+                , gcstats.large_pinned_words
+                , cur_stats.large_size);
+          reportWithUtilWords ("  multi"
+                , gcstats.small_pinned_words
+                , cur_stats.small_pinned_size);
+        }
 
         if (verbose) {
           liveDiff(cur_stats.total_size * sizeof(W_));

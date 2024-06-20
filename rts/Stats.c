@@ -1778,7 +1778,7 @@ static void reportWithUtil (char *desc, W_ blocks, W_ used_words) {
   reportWithUtilWords (desc, total_words, used_words);
 }
 
-gcStats getGCStats(bool verbose)
+gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
 {
   uint32_t g, i;
   uint32_t gen_large_objs, gen_large_multi_objs, gen_compact_objs;
@@ -1820,26 +1820,29 @@ gcStats getGCStats(bool verbose)
       for (bd = gen->large_objects, gen_large_objs = 0, gen_large_multi_objs = 0;
             bd; bd = bd->link) {
           gen_large_objs++;
-          // Note even objects which were allocated via the pointer bump
-          // allocator may be single object sometimes, such blocks are also
-          // counted as large single object blocks.
-          if (bd->blocks <= 1) {
-            // This may not work accurately always, because in some cases we
-            // have space lost due to alignment e.g. an array closure is
-            // aligned to BA_ALIGN which may pad a word or two before the
-            // array. However, the start of a block is always aligned,
-            // therefore, should work.
-            StgClosure *c = UNTAG_CLOSURE((StgClosure *)(bd->start));
-            size_t size = getClosureSize(c);
-            if (size < LARGE_OBJECT_THRESHOLD &&
-                  bd->start + size < bd->free) {
-              gen_large_multi_objs++;
-              tot_large_multi_words += bd->free - bd->start;
+          if (enable_fine_grained_pinned) {
+            // Note: even objects which were allocated via the pointer bump
+            // allocator may be single object sometimes, such blocks are also
+            // counted as large single object blocks.
+            if (bd->blocks <= 1) {
+              // This may not work accurately always, because in some
+              // cases we may introduce padding at the beginning of a
+              // block for alignment e.g. an array closure is aligned to
+              // BA_ALIGN which may pad a word or two before the array.
+              // The padding may depend on the user requested alignment as
+              // well.
+              StgClosure *c = UNTAG_CLOSURE((StgClosure *)(bd->start));
+              size_t size = getClosureSize(c);
+              if (size < LARGE_OBJECT_THRESHOLD &&
+                    bd->start + size < bd->free) {
+                gen_large_multi_objs++;
+                tot_large_multi_words += bd->free - bd->start;
+              } else {
+                tot_large_single_words += bd->free - bd->start;
+              }
             } else {
-              tot_large_single_words += bd->free - bd->start;
+                tot_large_single_words += bd->free - bd->start;
             }
-          } else {
-              tot_large_single_words += bd->free - bd->start;
           }
       }
 
@@ -1953,23 +1956,14 @@ gcStats getGCStats(bool verbose)
   tot_large_blocks += cur_pinned_blocks;
   tot_large_words += cur_pinned_words;
   tot_large_multi_objs += cur_pinned_blocks;
-  tot_large_multi_words += cur_pinned_words;
 
-  // XXX pinned blocks may have less used space than actually reported,
+  // NOTE: pinned blocks may have less used space than actually reported,
   // because bd->free is not adjusted when objects become dead. So
   // in presence of pinned objects live words calculated using
   // blocks may be more than the live words computed by traversing
   // the heap. The deviation between the two includes the dead pinned
   // objects.
   //
-  // XXX Print fragmentation (slop) percentage of all, pinned multi-object,
-  // unpinned multi-object blocks based on bytes counted by heap traversal and
-  // bytes counted using blocks.
-  //
-  // XXX Print fragmentation (slop) percentage of all large blocks based on
-  // bytes counted by heap traversal and bytes counted using blocks.
-  //
-
   // XXX See memInventory function in rts/sm/Sanity.c for more ideas.
   /*
   fprintf(hp_file, "mblocks in bytes at gc:%lu (%lu pages)\n"
@@ -2036,10 +2030,14 @@ gcStats getGCStats(bool verbose)
       tot_reg_words - tot_gct_words);
   reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
   reportWithUtil (" large (pinned)", tot_large_blocks, tot_large_words);
-  reportWithUtil ("  single"
-      , tot_large_single_blocks, tot_large_single_words);
-  reportWithUtil ("  multi"
-      , tot_large_multi_objs, tot_large_multi_words);
+
+  if (enable_fine_grained_pinned) {
+    tot_large_multi_words += cur_pinned_words;
+    reportWithUtil ("  single"
+        , tot_large_single_blocks, tot_large_single_words);
+    reportWithUtil ("  multi"
+        , tot_large_multi_objs, tot_large_multi_words);
+  }
   fprintf(hp_file, " compact: %lu\n"
       , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
   reportWithUtil (" mut_lists", tot_mut_blocks, tot_mut_words);
@@ -2056,10 +2054,12 @@ gcStats getGCStats(bool verbose)
     fprintf(hp_file, "compact object count: %u\n", tot_compact_objs);
   }
 
-  if (tot_large_words != tot_large_multi_words + tot_large_single_words) {
-    barf ("tot_large_words %lu != tot_large_multi_words %lu + "
-          "tot_large_single_words %lu\n",
-          tot_large_words, tot_large_multi_words, tot_large_single_words);
+  if (enable_fine_grained_pinned) {
+    if (tot_large_words != tot_large_multi_words + tot_large_single_words) {
+      barf ("tot_large_words %lu != tot_large_multi_words %lu + "
+            "tot_large_single_words %lu\n",
+            tot_large_words, tot_large_multi_words, tot_large_single_words);
+    }
   }
 
   /*
@@ -2108,8 +2108,11 @@ gcStats getGCStats(bool verbose)
   gcStats st;
   st.live_words = tot_live_words;
   st.regular_words = tot_reg_words;
-  st.small_pinned_words = tot_large_multi_words;
-  st.large_pinned_words = tot_large_single_words;
+  st.large_words = tot_large_words;
+  if (enable_fine_grained_pinned) {
+    st.small_pinned_words = tot_large_multi_words;
+    st.large_pinned_words = tot_large_single_words;
+  }
   return st;
 }
 
