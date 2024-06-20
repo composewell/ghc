@@ -20,6 +20,7 @@
 #include "StablePtr.h" /* markStablePtrTable */
 #include "StableName.h" /* rememberOldStableNameAddresses */
 #include "sm/Storage.h"
+#include "Printer.h"
 
 /* Note [What is a retainer?]
    ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -298,7 +299,16 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
     if (retainerSetOfc == NULL) {
         if (!first_visit) {
           // barf ("not first_visit but retainerSetOfc NULL\n");
-          fprintf(stderr, "[BARF] not first_visit but retainerSetOfc NULL\n");
+#ifdef GC_PROFILING
+          const StgInfoTable *info = get_itbl(c);
+          fprintf (stderr
+                , "%p %s {%s} {%s}"
+                , c
+                , closure_type_names[info->type]
+                , GET_PROF_TYPE(info)
+                , GET_PROF_DESC(info));
+#endif
+          fprintf(stderr, "[BARF] not first_visit but retainerSetOfc NULL: %p\n", c);
           return 0;
         }
         // This is the first visit to *c.

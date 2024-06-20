@@ -758,11 +758,8 @@ static void fillSpaces(char *spaces, int cur_level) {
 }
 
 static bool collapseDuplicates = 1;
-// XXX Report maximum, average object size, and histogram
-// XXX Report arrays and other large object types separately
 
-// The size in square brackets [count] includes the size of the current node
-// and all its children.
+// XXX Report maximum, average object size, and histogram
 //
 // CAUTION: modifies the ts->stackTop->se_dup_count.
 static void printNode (bool first_visit, traverseState *ts, stackElement *se,
@@ -1635,16 +1632,16 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     if (gcDiffNewest > gcDiffOldest) {
       gcDiffNewest = gcDiffOldest;
     }
-    // Print the 4K blocks and megablocks and pinning info
-    // 4K pinned blocks utilization
-    // megablocks having pinned blocks and other blocks free
-    // XXX mark the closures using pinned memory as pinned
-    // XXX We need to report STATIC closures in the path to dynamic ones
+    // XXX Using the profiling header moves the perfectly aligned page size
+    // allocations by a few bytes, thus increasing the slop significantly. To
+    // avoid that we can use a per megablock bitmap to keep track of the
+    // traversed closures in a non-profiling build. Or we can reserve 32-bytes
+    // per 4K block in the block descriptor for that purpose, though this could
+    // be more expensive to set on allocations, but we can clear it cheaply at
+    // the end of traversal, by just walking all the used blocks.
+    //
     // XXX record the thread-id of allocator along with gc-id
     // XXX Filter based on thread-id
-    // XXX load trav/flip bit correctly, it does not work for static closures
-    // XXX Can static traversal lead to infinite loops or too much
-    // inefficiency?
     //
     // if we are reporting heap profile the GC is forced to be a major
     // GC.
@@ -1720,10 +1717,8 @@ inner_loop:
 
     // Some closures are added twice on the stack by the initialization code
     // itself.  So we need to take care of that here.
-    StgClosure *c_untagged;
-    c_untagged = UNTAG_CLOSURE(c);
-    if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-      if (traverseIsFirstVisit(c_untagged) == 0) {
+    if ((char *)c >= (char *)mblock_address_space.begin) {
+      if (traverseIsFirstVisit(c) == 0) {
         printNode (false, ts, se, cur_level, addTraversalStats(&cur_stats, &se->se_subtree_stats));
         goto loop;
       }
@@ -1752,7 +1747,6 @@ inner_loop:
         if (first_visit1) {
           goto inner_loop;
         } else {
-          // XXX do not print if static
           printNode (false, ts, se, cur_level, addTraversalStats(&cur_stats, &se->se_subtree_stats));
           goto loop;
         }
