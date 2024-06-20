@@ -1466,7 +1466,7 @@ extern uint32_t numObjectVisited;
 extern uint32_t timesAnyObjectVisited;
 
 static void
-resetMutableObjects(int cur_level, traversalStats *cur_stats)
+resetMutableObjects(int cur_level, traversalStats *cur_stats, W_ *mut_words)
 {
     uint32_t g, n;
     bdescr *bd;
@@ -1489,6 +1489,8 @@ resetMutableObjects(int cur_level, traversalStats *cur_stats)
             for (ml = bd->start; ml < bd->free; ml++) {
                 bool first_visit = traverseMaybeInitClosureData((StgClosure *)*ml);
                 timesAnyObjectVisited++;
+                // Account the pointer word
+                (*mut_words)++;
                 if (first_visit) {
                   StgClosure *c_untagged = UNTAG_CLOSURE((StgClosure *)*ml);
                   const StgInfoTable *info = get_itbl(c_untagged);
@@ -1707,10 +1709,10 @@ loop:
     traversePop(ts, &c, &cp, &data, &cur_level, &cur_stats, &se);
 
     if (c == NULL) {
+        W_ mut_words = 0;
 
         debug("maxStackSize= %d\n", ts->maxStackSize);
-        // XXX Need to add these to the total
-        resetMutableObjects(cur_level, &cur_stats);
+        resetMutableObjects(cur_level, &cur_stats, &mut_words);
 
         fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
         fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
@@ -1719,22 +1721,30 @@ loop:
 
         fprintf(hp_file, "---------Real Usage/Used block space-----------\n");
         reportWithUtilWords ("live bytes"
-              , gcstats.live_words, cur_stats.total_size);
+              , gcstats.live_words, cur_stats.total_size + mut_words);
         W_ pinned_size = cur_stats.large_size + cur_stats.small_pinned_size;
         W_ unpinned_size = cur_stats.total_size - pinned_size;
-        reportWithUtilWords (" regular"
+        reportWithUtilWords (" movable"
               , gcstats.regular_words, unpinned_size);
-        reportWithUtilWords (" large (pinned)"
+        // XXX There will be some loss due to alignment of pinned
+        // data in both large and small allocations (aligned
+        // arrays). However, the significant loss is because of dead
+        // pinned objects.
+        reportWithUtilWords (" pinned"
               , gcstats.large_words
               , pinned_size);
         if (enable_fine_grained_pinned) {
-          reportWithUtilWords ("  single"
+          reportWithUtilWords ("  large"
                 , gcstats.large_pinned_words
                 , cur_stats.large_size);
-          reportWithUtilWords ("  multi"
+          reportWithUtilWords ("  small"
                 , gcstats.small_pinned_words
                 , cur_stats.small_pinned_size);
         }
+        reportWithUtilWords (" mut_lists"
+        // XXX get it from gcstats?
+              , mut_words
+              , mut_words);
 
         if (verbose) {
           liveDiff(cur_stats.total_size * sizeof(W_));

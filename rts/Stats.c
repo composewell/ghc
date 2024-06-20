@@ -1894,11 +1894,11 @@ gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
 
         fprintf(hp_file,
               " used blocks: %lu\n"
-              "  regular: %lu\n"
-              "  large (pinned): %lu\n"
-              "   single: %lu\n"
-              "   multi: %u\n"
-              "  compact:%lu\n"
+              "  movable: %lu\n"
+              "  pinned: %lu\n"
+              "   large: %lu\n"
+              "   small: %u\n"
+              "  compact (pinned):%lu\n"
             , gen_blocks
             , gen->n_blocks + gen_gcthread_blocks
             , gen->n_large_blocks
@@ -1907,28 +1907,32 @@ gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
             , gen->n_compact_blocks);
 
         reportWithUtil (" used/total bytes", gen_blocks, gen_live_words);
-        reportWithUtil ("  regular"
+        reportWithUtil ("  movable"
               , gen->n_blocks + gen_gcthread_blocks
               , gen->n_words + gen_gcthread_words);
         reportWithUtil ("   generation", gen->n_blocks , gen->n_words);
         reportWithUtil ("   gcthreads"
               , gen_gcthread_blocks, gen_gcthread_words);
-        reportWithUtil ("  large (pinned)"
+        reportWithUtil ("  pinned"
               , gen->n_large_blocks, gen->n_large_words);
-        reportWithUtil ("   single"
-              , gen_large_single_blocks, 0);
-        reportWithUtil ("   multi"
-              , gen_large_multi_objs, 0);
+        if (enable_fine_grained_pinned) {
+          reportWithUtil ("   large"
+                , gen_large_single_blocks, 0);
+          reportWithUtil ("   small"
+                , gen_large_multi_objs, 0);
+        }
         fprintf(hp_file, "  compact: %lu\n"
             , gen->n_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
 
-        fprintf(hp_file,
-              " large (pinned) object count: %u\n"
-              "  single: %u\n"
-              "  multi: %u\n"
-            , gen_large_objs
-            , gen_large_objs - gen_large_multi_objs
-            , gen_large_multi_objs);
+        if (enable_fine_grained_pinned) {
+          fprintf(hp_file,
+                " Pinned object count: %u\n"
+                "  large: %u\n"
+                "  small: %u\n"
+              , gen_large_objs
+              , gen_large_objs - gen_large_multi_objs
+              , gen_large_multi_objs);
+        }
         fprintf(hp_file, " compact object count: %u\n", gen_compact_objs);
       }
   }
@@ -2006,16 +2010,20 @@ gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
   fprintf(hp_file,
         "n_alloc_blocks:%lu\n"
         " used: %lu\n"
-        "  regular: %lu\n"
-        "  large (pinned): %lu\n"
-        "   single: %lu\n"
-        "   multi: %u\n"
-        "  compact: %lu\n"
-        "  mut_lists: %lu\n"
+        "  movable: %lu\n"
+        "   generations: %lu\n"
+        "   gcthreads: %lu\n"
+        "  pinned: %lu\n"
+        "   large: %lu\n"
+        "   small: %u\n"
+        "  compact (pinned): %lu\n"
+        "  mut_lists (pinned): %lu\n"
         " free (nurseries): %lu\n"
       , n_alloc_blocks
       , tot_live_blocks
       , tot_reg_blocks
+      , tot_reg_blocks - tot_gct_blocks
+      , tot_gct_blocks
       , tot_large_blocks
       , tot_large_single_blocks
       , tot_large_multi_objs
@@ -2025,31 +2033,33 @@ gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
 
   fprintf(hp_file, "---------Block Level Used/Total-----------\n");
   reportWithUtil ("used/total bytes", tot_live_blocks, tot_live_words);
-  reportWithUtil (" regular", tot_reg_blocks, tot_reg_words);
+  reportWithUtil (" movable", tot_reg_blocks, tot_reg_words);
   reportWithUtil ("  generations", tot_reg_blocks - tot_gct_blocks,
       tot_reg_words - tot_gct_words);
   reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
-  reportWithUtil (" large (pinned)", tot_large_blocks, tot_large_words);
+  reportWithUtil (" pinned", tot_large_blocks, tot_large_words);
 
   if (enable_fine_grained_pinned) {
     tot_large_multi_words += cur_pinned_words;
-    reportWithUtil ("  single"
+    reportWithUtil ("  large"
         , tot_large_single_blocks, tot_large_single_words);
-    reportWithUtil ("  multi"
+    reportWithUtil ("  small"
         , tot_large_multi_objs, tot_large_multi_words);
   }
-  fprintf(hp_file, " compact: %lu\n"
+  fprintf(hp_file, " compact (pinned): %lu\n"
       , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
-  reportWithUtil (" mut_lists", tot_mut_blocks, tot_mut_words);
+  reportWithUtil (" mut_lists (pinned)", tot_mut_blocks, tot_mut_words);
 
-  fprintf(hp_file, "---------Large object counts-----------\n");
-  fprintf(hp_file,
-        "large (pinned) object count: %u\n"
-        " single: %u\n"
-        " multi: %u\n"
-      , tot_large_objs
-      , tot_large_objs - tot_large_multi_objs
-      , tot_large_multi_objs);
+  if (enable_fine_grained_pinned) {
+    fprintf(hp_file, "---------Large object counts-----------\n");
+    fprintf(hp_file,
+          "Pinned object count: %u\n"
+          " large: %u\n"
+          " small: %u\n"
+        , tot_large_objs
+        , tot_large_objs - tot_large_multi_objs
+        , tot_large_multi_objs);
+  }
   if (verbose) {
     fprintf(hp_file, "compact object count: %u\n", tot_compact_objs);
   }
