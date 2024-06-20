@@ -1460,11 +1460,14 @@ traversePAP (int level, traverseState *ts,
 }
 
 static void
-resetMutableObjects(void)
+resetMutableObjects(int cur_level, traversalStats *cur_stats)
 {
     uint32_t g, n;
     bdescr *bd;
     StgPtr ml;
+    char spaces[MAX_SPACES];
+
+    fillSpaces(spaces, cur_level);
 
     // The following code resets the 'trav' field of each unvisited mutable
     // object.
@@ -1478,8 +1481,32 @@ resetMutableObjects(void)
         for (n = 0; n < n_capabilities; n++) {
           for (bd = capabilities[n]->mut_lists[g]; bd != NULL; bd = bd->link) {
             for (ml = bd->start; ml < bd->free; ml++) {
-
-                traverseMaybeInitClosureData((StgClosure *)*ml);
+                bool first_visit = traverseMaybeInitClosureData((StgClosure *)*ml);
+                //timesAnyObjectVisited++;
+                if (first_visit) {
+                  StgClosure *c_untagged = UNTAG_CLOSURE((StgClosure *)*ml);
+                  const StgInfoTable *info = get_itbl(c_untagged);
+                  // fprintf (stderr, "----------> mut object missed\n");
+                  //numObjectVisited++;
+                  if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+                      size_t cl_size = getClosureSize(c_untagged);
+                      updateTraversalStats (cur_stats, c_untagged, cl_size);
+                      if (filterClosure (c_untagged, cl_size)) {
+                        cur_stats->filtered_size += cl_size;
+                        fprintf (hp_file
+                              , "%s%d %p %s {%s} {%s} {%lu}:"
+                              , spaces
+                              , cur_level
+                              , c_untagged
+                              , closure_type_names[info->type]
+                              , GET_PROF_TYPE(info)
+                              , GET_PROF_DESC(info)
+                              , (StgWord64) c_untagged->header.prof.ccs);
+                        // XXX total_size is accumulated.
+                        fprintf (hp_file, " %lu [%lu]", cl_size, cur_stats->total_size);
+                      }
+                  }
+                }
             }
           }
         }
@@ -1680,7 +1707,7 @@ loop:
 
         debug("maxStackSize= %d\n", ts->maxStackSize);
         // XXX Need to add these to the total
-        resetMutableObjects();
+        resetMutableObjects(cur_level, &cur_stats);
 
         fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
         fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
