@@ -1557,6 +1557,7 @@ void triggerProf( StgWord8 reportGcType
     // 3 == Window and Verbose
     bool isReportSince = (reportGcType & 1) == 0;
     bool isVerbose = ((reportGcType >> 1) & 1) == 1;
+    bool isFineGrainedPinnedReporting = ((reportGcType >> 2) & 1) == 1;
 
     if (isReportSince) {
         report = GC_SINCE;
@@ -1564,6 +1565,7 @@ void triggerProf( StgWord8 reportGcType
         report = GC_WINDOW;
     }
     isReportVerbose = isVerbose;
+    enable_fine_grained_pinned = isFineGrainedPinnedReporting;
 
     // XXX Is there a way to manually specify coercion?
     // Int to Unsigned Int should be fine?

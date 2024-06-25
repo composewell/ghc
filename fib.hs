@@ -12,8 +12,7 @@ main = do
     -- capabilities <- getNumCapabilities
     -- putStrLn $ "Number of capabilities: " ++ show capabilities
     a  <-  f 20
-    triggerProf (ReportSince 0 0) True
-    -- triggerProfSinceIO 0 9
+    triggerProf (ReportSince 0 0) True True
     b  <-  g 30
     print  $  a  +  b
     errorWithStackTrace "hello"
@@ -37,20 +36,25 @@ data ReportType
           , rwOffsetRelFromEndUpper :: Word64
           }
 
-triggerProf :: ReportType -> Bool -> IO ()
-triggerProf reportType verbose = do
+triggerProf :: ReportType -> Bool -> Bool -> IO ()
+triggerProf reportType verbose fineGrainedPinnedReporting = do
     let (W64# unused) = 0
     case reportType of
         ReportSince (W64# l) (W64# u) -> IO $ \s ->
-            let (W64# rt) = setVerbosityBit 0
+            let (W64# rt) = setOptions 0
              in (# triggerProf# (unsafeCoerce# rt) u unused l s, () #)
         ReportWindow (W64# l) (W64# u) -> IO $ \s ->
-            let (W64# rt) = setVerbosityBit 1
+            let (W64# rt) = setOptions 1
              in (# triggerProf# (unsafeCoerce# rt) u l unused s, () #)
     where
+    setOptions = setVerbosityBit . setPinnedReportingBit
     setVerbosityBit i =
         if verbose
         then setBit i 1
+        else i
+    setPinnedReportingBit i =
+        if fineGrainedPinnedReporting
+        then setBit i 2
         else i
 
 fib n =

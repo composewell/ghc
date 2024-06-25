@@ -30,6 +30,7 @@ extern uint64_t gcDiffOldest;
 extern uint64_t gcAbsOldest;
 extern enum ReportType report;
 extern bool isReportVerbose;
+extern bool enable_fine_grained_pinned;
 
 // -----------------------------------------------------------------------------
 
