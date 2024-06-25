@@ -828,7 +828,7 @@ buildSRT dflags refs = do
     lbl = mkSRTLabel id
     srt_n_info = mkSRTInfoLabel (length refs)
     fields =
-      mkStaticClosure dflags srt_n_info 020202020202
+      mkStaticClosure dflags srt_n_info dontCareCCS
         [ CmmLabel lbl | SRTEntry lbl <- refs ]
         [] -- no padding
         [mkIntCLit dflags 0] -- link field
@@ -873,7 +873,7 @@ updInfoSRTs dflags srt_env funSRTEnv (CmmProc top_info top_l live g)
             Just srtEntries -> srtTrace "maybeStaticFun" (ppr res)
               (info_tbl { cit_rep = new_rep }, res)
               where res = [ CmmLabel lbl | SRTEntry lbl <- srtEntries ]
-          fields = mkStaticClosureFields dflags info_tbl 030303030303 (idCafInfo id)
+          fields = mkStaticClosureFields dflags info_tbl ccs (idCafInfo id)
             srtEntries
           new_rep = case cit_rep of
              HeapRep sta ptrs nptrs ty ->

@@ -165,7 +165,7 @@ hpStore base vals = do
 mkStaticClosureFields
         :: DynFlags
         -> CmmInfoTable
-        -> Integer
+        -> CostCentreStack
         -> CafInfo
         -> [CmmLit]             -- Payload
         -> [CmmLit]             -- The full closure
@@ -212,7 +212,7 @@ mkStaticClosureFields dflags info_tbl ccs caf_refs payload
                                       -- See Note [STATIC_LINK fields]
                                       -- in rts/sm/Storage.h
 
-mkStaticClosure :: DynFlags -> CLabel -> Integer -> [CmmLit]
+mkStaticClosure :: DynFlags -> CLabel -> CostCentreStack -> [CmmLit]
   -> [CmmLit] -> [CmmLit] -> [CmmLit] -> [CmmLit]
 mkStaticClosure dflags info_lbl ccs payload padding static_link_field saved_info_field
   =  [CmmLabel info_lbl]
