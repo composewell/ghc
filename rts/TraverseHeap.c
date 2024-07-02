@@ -1688,8 +1688,17 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
               , gcDiffOldest, gcAbsOldest
               , verbose ? "true" : "false"
               , enable_fine_grained_pinned ? "true" : "false");
+
+      uint64_t window_lower;
+      uint64_t window_upper = curGc - gcDiffNewest;
+      if (report == GC_SINCE) {
+          window_lower = gcAbsOldest;
+      } else {
+          window_lower = curGc - gcDiffOldest;
+      }
       fprintf (hp_file, "gcids: current {%lu}, window [%lu, %lu]\n"
-            , curGc, curGc - gcDiffOldest, curGc - gcDiffNewest);
+            , curGc, window_lower, window_upper);
+
     } else {
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }

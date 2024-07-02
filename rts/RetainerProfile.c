@@ -479,6 +479,7 @@ retainerProfile(void)
     (double)timesAnyObjectVisited / numObjectVisited);
   */
   fprintf (hp_file, "-----------End retainer profile-------------\n");
+  fflush (hp_file);
 }
 
 #endif /* PROFILING */
