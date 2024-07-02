@@ -35,6 +35,7 @@ data ReportType
           { rwOffsetRelFromEndLower :: Word64
           , rwOffsetRelFromEndUpper :: Word64
           }
+    | ReportStats
 
 triggerProf :: ReportType -> Bool -> Bool -> IO ()
 triggerProf reportType verbose fineGrainedPinnedReporting = do
@@ -46,11 +47,14 @@ triggerProf reportType verbose fineGrainedPinnedReporting = do
         ReportWindow (W64# l) (W64# u) -> IO $ \s ->
             let (W64# rt) = setOptions 1
              in (# triggerProf# (unsafeCoerce# rt) u l unused s, () #)
+        ReportStats -> IO $ \s ->
+            let (W64# rt) = setOptions 2
+             in (# triggerProf# (unsafeCoerce# rt) unused unused unused s, () #)
     where
     setOptions = setVerbosityBit . setPinnedReportingBit
     setVerbosityBit i =
         if verbose
-        then setBit i 1
+        then setBit i 3
         else i
     setPinnedReportingBit i =
         if fineGrainedPinnedReporting

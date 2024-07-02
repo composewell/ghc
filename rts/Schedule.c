@@ -1550,19 +1550,24 @@ void triggerProf( StgWord8 reportGcType
                 , StgWord64 gcAOldest)
 {
 #if defined(GC_PROFILING)
-    // We can use bit 0 for the report type and bit 1 for verbosity
-    // 0 == Since and not Verbose
-    // 1 == Window and not Verbose
-    // 2 == Since and Verbose
-    // 3 == Window and Verbose
-    bool isReportSince = (reportGcType & 1) == 0;
-    bool isVerbose = ((reportGcType >> 1) & 1) == 1;
+    // Bits and meaning
+    // 0, 1 == Report type
+    // 2 == Fine Grained Pinned Reporting
+    // 3 == Verbosity
+    StgWord8 typeOfReport = reportGcType & 3;
     bool isFineGrainedPinnedReporting = ((reportGcType >> 2) & 1) == 1;
+    bool isVerbose = ((reportGcType >> 3) & 1) == 1;
 
-    if (isReportSince) {
+    switch (typeOfReport) {
+    case 0:
         report = GC_SINCE;
-    } else {
+        break;
+    case 1:
         report = GC_WINDOW;
+        break;
+    case 2:
+        report = GC_STATS;
+        break;
     }
     isReportVerbose = isVerbose;
     enable_fine_grained_pinned = isFineGrainedPinnedReporting;

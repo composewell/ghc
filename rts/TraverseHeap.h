@@ -22,7 +22,8 @@
 
 enum ReportType {
   GC_WINDOW,
-  GC_SINCE
+  GC_SINCE,
+  GC_STATS
 };
 
 extern uint64_t gcDiffNewest;

@@ -868,6 +868,7 @@ static const char* stringifyReportType(enum ReportType rep)
    {
       case GC_SINCE: return "GC_SINCE";
       case GC_WINDOW: return "GC_WINDOW";
+      case GC_STATS: return "GC_STATS";
       default: barf ("stringifyReportType: invalid report type\n");
    }
 }
@@ -892,6 +893,7 @@ static bool filterClosure (StgClosure *c, size_t size) {
           return false;
         }
         break;
+      case GC_STATS: return false;
       default: barf("filterClosure: unhandled report type\n");
     }
 
@@ -1679,9 +1681,13 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // GC.
     if(curGc >= gcDiffOldest) {
       fprintf ( hp_file
-              , "state: report %s, dNewest %lu, dOldest %lu, aOldest %lu\n"
+              , "state: "
+                "report %s, dNewest %lu, dOldest %lu, aOldest %lu, "
+                "verbose %s, fineGrainedPinnedReporting %s\n"
               , stringifyReportType(report), gcDiffNewest
-              , gcDiffOldest, gcAbsOldest);
+              , gcDiffOldest, gcAbsOldest
+              , verbose ? "true" : "false"
+              , enable_fine_grained_pinned ? "true" : "false");
       fprintf (hp_file, "gcids: current {%lu}, window [%lu, %lu]\n"
             , curGc, curGc - gcDiffOldest, curGc - gcDiffNewest);
     } else {
