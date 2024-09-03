@@ -40,7 +40,7 @@ static Time
     start_nonmoving_gc_cpu, start_nonmoving_gc_elapsed,
     start_nonmoving_gc_sync_elapsed;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 static Time RP_start_time  = 0, RP_tot_time  = 0;  // retainer prof user time
 static Time RPe_start_time = 0, RPe_tot_time = 0;  // retainer prof elap time
 
@@ -86,7 +86,7 @@ Time stat_getElapsedTime(void)
    Measure the current MUT time, for profiling
    ------------------------------------------------------------------------ */
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 /*
   mut_user_time_during_RP() returns the MUT time during retainer profiling.
   The same is for mut_user_time_during_HC();
@@ -126,7 +126,7 @@ initStats0(void)
     end_exit_cpu     = 0;
     end_exit_elapsed  = 0;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     RP_start_time  = 0;
     RP_tot_time  = 0;
     RPe_start_time = 0;
@@ -522,6 +522,13 @@ stat_endGC (Capability *cap, gc_thread *initiating_gct, W_ live, W_ copied, W_ s
     // Update the cumulative stats
 
     stats.gcs++;
+#ifdef GC_PROFILING
+    //era++;
+    // XXX The lsb of era should always be 0 for heap traversal visited bit to
+    // work. This header word is currently used as retainer_set. So we need to
+    // use a separate word for era. Or reuse ccs field for that.
+    era = 0;
+#endif
     stats.allocated_bytes = tot_alloc_bytes;
     stats.max_mem_in_use_bytes = peak_mblocks_allocated * MBLOCK_SIZE;
 
@@ -645,7 +652,7 @@ stat_endGC (Capability *cap, gc_thread *initiating_gct, W_ live, W_ copied, W_ s
 /* -----------------------------------------------------------------------------
    Called at the beginning of each Retainer Profiliing
    -------------------------------------------------------------------------- */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void
 stat_startRP(void)
 {
@@ -663,7 +670,7 @@ stat_startRP(void)
    Called at the end of each Retainer Profiliing
    -------------------------------------------------------------------------- */
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void
 stat_endRP(
   uint32_t retainerGeneration,
@@ -690,7 +697,7 @@ stat_endRP(
 /* -----------------------------------------------------------------------------
    Called at the beginning of each heap census
    -------------------------------------------------------------------------- */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void
 stat_startHeapCensus(void)
 {
@@ -707,7 +714,7 @@ stat_startHeapCensus(void)
 /* -----------------------------------------------------------------------------
    Called at the end of each heap census
    -------------------------------------------------------------------------- */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void
 stat_endHeapCensus(void)
 {
@@ -918,7 +925,7 @@ static void report_summary(const RTSSummaryStats* sum)
                 TimeToSecondsDbl(stats.nonmoving_gc_elapsed_ns));
     }
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     statsPrintf("  RP      time  %7.3fs  (%7.3fs elapsed)\n",
                 TimeToSecondsDbl(sum->rp_cpu_ns),
                 TimeToSecondsDbl(sum->rp_elapsed_ns));
@@ -1072,11 +1079,11 @@ static void report_machine_readable (const RTSSummaryStats * sum)
 
     MR_STAT("exit_cpu_seconds", "f", TimeToSecondsDbl(sum->exit_cpu_ns));
     MR_STAT("exit_wall_seconds", "f", TimeToSecondsDbl(sum->exit_elapsed_ns));
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     MR_STAT("rp_cpu_seconds", "f", TimeToSecondsDbl(sum->rp_cpu_ns));
     MR_STAT("rp_wall_seconds", "f", TimeToSecondsDbl(sum->rp_elapsed_ns));
-    MR_STAT("hc_cpu_seconds", "f", TimeToSecondsDbl(sum->hc_cpu_ns));
-    MR_STAT("hc_wall_seconds", "f", TimeToSecondsDbl(sum->hc_elapsed_ns));
+    //MR_STAT("hc_cpu_seconds", "f", TimeToSecondsDbl(sum->hc_cpu_ns));
+    //MR_STAT("hc_wall_seconds", "f", TimeToSecondsDbl(sum->hc_elapsed_ns));
 #endif
     MR_STAT("total_cpu_seconds", "f", TimeToSecondsDbl(stats.cpu_ns));
     MR_STAT("total_wall_seconds", "f",
@@ -1260,11 +1267,11 @@ stat_exitReport (void)
             if (stats.cpu_ns <= 0) { stats.cpu_ns = 1; }
             if (stats.elapsed_ns <= 0) { stats.elapsed_ns = 1; }
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
             sum.rp_cpu_ns = RP_tot_time;
             sum.rp_elapsed_ns = RPe_tot_time;
-            sum.hc_cpu_ns = HC_tot_time;
-            sum.hc_elapsed_ns = HCe_tot_time;
+            //sum.hc_cpu_ns = HC_tot_time;
+            //sum.hc_elapsed_ns = HCe_tot_time;
 #endif // PROFILING
 
             // We do a GC during the EXIT phase. We'll attribute the cost of
@@ -1711,6 +1718,394 @@ void getRTSStats( RTSStats *s )
         stats.nonmoving_gc_cpu_ns;
     s->mutator_elapsed_ns = current_elapsed - end_init_elapsed -
         stats.gc_elapsed_ns;
+}
+
+// XXX do we need a mutex for this?
+// XXX 32-bit field might overflow?
+// Should we use major_gcs instead?
+uint32_t getNumGcs(void)
+{
+    return stats.gcs;
+}
+
+extern size_t getClosureSize(const StgClosure *p);
+
+void reportWithUtilWords (char *desc, W_ total_words, W_ used_words) {
+  W_ bytes = total_words * sizeof(W_);
+  W_ used_bytes = used_words * sizeof(W_);
+  W_ percent_bytes;
+
+  if (bytes != 0) {
+    percent_bytes = (used_bytes * 100) / bytes;
+  } else {
+    percent_bytes = 100;
+  }
+
+  fprintf(hp_file,
+        "%s: %lu/%lu (%lu%%)\n"
+      , desc
+      , used_bytes
+      , bytes
+      , percent_bytes);
+}
+
+static void reportWithUtil (char *desc, W_ blocks, W_ used_words) {
+  W_ total_words = blocks * BLOCK_SIZE_W;
+
+  reportWithUtilWords (desc, total_words, used_words);
+}
+
+gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
+{
+  uint32_t g, i;
+  uint32_t gen_large_objs, gen_large_multi_objs, gen_compact_objs;
+  uint32_t tot_large_objs, tot_compact_objs, tot_large_multi_objs;
+  W_ gen_live_words, gen_gcthread_words, cur_pinned_words;
+  W_ tot_live_words, tot_reg_words, tot_large_words, tot_mut_words,
+     tot_gct_words, tot_large_multi_words, tot_large_single_words;
+  W_ gen_blocks, gen_gcthread_blocks, cur_pinned_blocks;
+  W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks,
+     tot_mut_blocks, tot_gct_blocks;
+  bdescr *bd;
+  generation *gen;
+
+  tot_live_words = 0;
+  tot_reg_words = 0;
+  tot_large_words = 0;
+  tot_large_multi_words = 0;
+  tot_large_single_words = 0;
+  tot_mut_words = 0;
+  tot_gct_words = 0;
+
+  tot_reg_blocks = 0;
+  tot_large_blocks = 0;
+  tot_compact_blocks = 0;
+  tot_mut_blocks = 0;
+  tot_gct_blocks = 0;
+
+  tot_large_objs = 0;
+  tot_large_multi_objs = 0;
+  tot_compact_objs = 0;
+
+  for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
+      gen = &generations[g];
+
+      // BF_LARGE and BF_PINNED both imply pinned. We do not need to
+      // distinguish those. The large object list contains both. Small pinned
+      // objects are stuffed in large pinned blocks. We need to distinguish
+      // those.
+      for (bd = gen->large_objects, gen_large_objs = 0, gen_large_multi_objs = 0;
+            bd; bd = bd->link) {
+          gen_large_objs++;
+          if (enable_fine_grained_pinned) {
+            // Note: even objects which were allocated via the pointer bump
+            // allocator may be single object sometimes, such blocks are also
+            // counted as large single object blocks.
+            if (bd->blocks <= 1) {
+              // This may not work accurately always, because in some
+              // cases we may introduce padding at the beginning of a
+              // block for alignment e.g. an array closure is aligned to
+              // BA_ALIGN which may pad a word or two before the array.
+              // The padding may depend on the user requested alignment as
+              // well.
+              StgClosure *c = UNTAG_CLOSURE((StgClosure *)(bd->start));
+              size_t size = getClosureSize(c);
+              if (size < LARGE_OBJECT_THRESHOLD &&
+                    bd->start + size < bd->free) {
+                gen_large_multi_objs++;
+                tot_large_multi_words += bd->free - bd->start;
+              } else {
+                tot_large_single_words += bd->free - bd->start;
+              }
+            } else {
+                tot_large_single_words += bd->free - bd->start;
+            }
+          }
+      }
+
+      // Each compact object may contain multiple contiguous 4K blocks.
+      for (bd = gen->compact_objects, gen_compact_objs = 0; bd; bd = bd->link) {
+          gen_compact_objs++;
+      }
+
+      gen_live_words = genLiveWords(gen);
+      gen_blocks = genLiveBlocks(gen);
+
+      gen_gcthread_blocks = 0;
+      gen_gcthread_words = 0;
+      for (i = 0; i < n_capabilities; i++) {
+          tot_mut_words += countOccupied(capabilities[i]->mut_lists[g]);
+          tot_mut_blocks += countBlocks(capabilities[i]->mut_lists[g]);
+          gen_gcthread_words += gcThreadLiveWords(i,g);
+          gen_gcthread_blocks += gcThreadLiveBlocks(i,g);
+      }
+
+      gen_live_words += gen_gcthread_words;
+      gen_blocks += gen_gcthread_blocks;
+
+      tot_live_words += gen_live_words;
+      tot_reg_words += gen->n_words + gen_gcthread_words;
+      tot_gct_words += gen_gcthread_words;
+      tot_large_words += gen->n_large_words;
+
+      tot_reg_blocks += gen->n_blocks + gen_gcthread_blocks;
+      tot_gct_blocks += gen_gcthread_blocks;
+      tot_large_blocks += gen->n_large_blocks;
+      tot_large_objs += gen_large_objs;
+      tot_compact_blocks += gen->n_compact_blocks;
+      tot_compact_objs += gen_compact_objs;
+      tot_large_multi_objs += gen_large_multi_objs;
+
+      // XXX large_object closures of size 1028 words are found to be actually
+      // 1030 words (bd->free - bd_start). This creates a discrepancy in live
+      // bytes counted by walking the closures vs computed from the large
+      // object blocks. The discrepancy could be due to the BA_ALIGN addition
+      // in stg_newPinnedByteArrayzh. We can just account this as fragmentation
+      // or slop space. But the alignment should be 0 at the start of a block
+      // as it is always perfectly aligned.
+      if (verbose) {
+        fprintf(hp_file, "---------Generations Summary-----------\n");
+        fprintf(hp_file, "gen %d:\n", g);
+
+        W_ gen_large_single_blocks = gen->n_large_blocks - gen_large_multi_objs;
+
+        fprintf(hp_file,
+              " used blocks: %lu\n"
+              "  movable: %lu\n"
+              "  pinned: %lu\n"
+              "   large: %lu\n"
+              "   small: %u\n"
+              "  compact (pinned):%lu\n"
+            , gen_blocks
+            , gen->n_blocks + gen_gcthread_blocks
+            , gen->n_large_blocks
+            , gen_large_single_blocks
+            , gen_large_multi_objs
+            , gen->n_compact_blocks);
+
+        reportWithUtil (" used/total bytes", gen_blocks, gen_live_words);
+        reportWithUtil ("  movable"
+              , gen->n_blocks + gen_gcthread_blocks
+              , gen->n_words + gen_gcthread_words);
+        reportWithUtil ("   generation", gen->n_blocks , gen->n_words);
+        reportWithUtil ("   gcthreads"
+              , gen_gcthread_blocks, gen_gcthread_words);
+        reportWithUtil ("  pinned"
+              , gen->n_large_blocks, gen->n_large_words);
+        if (enable_fine_grained_pinned) {
+          reportWithUtil ("   large"
+                , gen_large_single_blocks, 0);
+          reportWithUtil ("   small"
+                , gen_large_multi_objs, 0);
+        }
+        fprintf(hp_file, "  compact: %lu\n"
+            , gen->n_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
+
+        if (enable_fine_grained_pinned) {
+          fprintf(hp_file,
+                " Pinned object count: %u\n"
+                "  large: %u\n"
+                "  small: %u\n"
+              , gen_large_objs
+              , gen_large_objs - gen_large_multi_objs
+              , gen_large_multi_objs);
+        }
+        fprintf(hp_file, " compact object count: %u\n", gen_compact_objs);
+      }
+  }
+  tot_live_words += tot_mut_words;
+
+  // XXX How is a pinned block freed? How do we know that all pinned objects in
+  // a pinned block are dead?
+  cur_pinned_blocks = 0;
+  cur_pinned_words = 0;
+  for (i = 0; i < n_capabilities; i++) {
+      bd = capabilities[i]->pinned_object_block;
+      if (bd != NULL) {
+          cur_pinned_blocks++;
+          cur_pinned_words = bd->free - bd->start;
+      }
+      // cap->pinned_object_blocks is transferred to large_objects during gc,
+      // so we do not worry about that, as we are called just after the GC.
+      bd = capabilities[i]->pinned_object_blocks;
+      for (; bd; bd = bd->link) {
+            cur_pinned_blocks++;
+            cur_pinned_words = bd->free - bd->start;
+      }
+  }
+  tot_live_words += cur_pinned_words;
+  tot_large_blocks += cur_pinned_blocks;
+  tot_large_words += cur_pinned_words;
+  tot_large_multi_objs += cur_pinned_blocks;
+
+  // NOTE: pinned blocks may have less used space than actually reported,
+  // because bd->free is not adjusted when objects become dead. So
+  // in presence of pinned objects live words calculated using
+  // blocks may be more than the live words computed by traversing
+  // the heap. The deviation between the two includes the dead pinned
+  // objects.
+  //
+  // XXX See memInventory function in rts/sm/Sanity.c for more ideas.
+  /*
+  fprintf(hp_file, "mblocks in bytes at gc:%lu (%lu pages)\n"
+        , stats.gc.mem_in_use_bytes
+        , stats.gc.mem_in_use_bytes / 4096);
+  */
+  // Blocks allocated at mblock allocator level. These blocks may have free
+  // space which is accounted in the free blocks at block level.
+  fprintf(hp_file, "---------MBlock allocator Summary-----------\n");
+  fprintf(hp_file, "n_alloc_mblocks:%lu (~%lu blocks)\n"
+        , mblocks_allocated
+        , mblocks_allocated * BLOCKS_PER_MBLOCK);
+
+  fprintf(hp_file, " n_alloc_blocks:%lu (%lu%%)\n"
+        , n_alloc_blocks
+        , (n_alloc_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
+
+  W_ n_free_blocks = countFreeListBlocks();
+
+  // Blocks that are completely free at the block allocator level, not
+  // even in nursery, but not contiguous mblocks. fragmented free space
+  // in used mblocks.
+  fprintf(hp_file, " n_free_blocks:%lu (%lu%%)\n"
+        , n_free_blocks
+        , (n_free_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
+
+  // Completely free mblocks, none of this space is used anywhere and can be
+  // returned to the OS.
+  fprintf(hp_file, "n_free_mblocks:%lu\n", countFreeMBlocks());
+
+  W_ tot_live_blocks =
+        tot_reg_blocks
+      + tot_large_blocks
+      + tot_compact_blocks
+      + tot_mut_blocks;
+
+  W_ tot_large_single_blocks = tot_large_blocks - tot_large_multi_objs;
+
+  fprintf(hp_file, "---------Block allocator Summary-----------\n");
+  fprintf(hp_file,
+        "n_alloc_blocks:%lu\n"
+        " used: %lu\n"
+        "  movable: %lu\n"
+        "   generations: %lu\n"
+        "   gcthreads: %lu\n"
+        "  pinned: %lu\n"
+        "   large: %lu\n"
+        "   small: %u\n"
+        "  compact (pinned): %lu\n"
+        "  mut_lists (pinned): %lu\n"
+        " free (nurseries): %lu\n"
+      , n_alloc_blocks
+      , tot_live_blocks
+      , tot_reg_blocks
+      , tot_reg_blocks - tot_gct_blocks
+      , tot_gct_blocks
+      , tot_large_blocks
+      , tot_large_single_blocks
+      , tot_large_multi_objs
+      , tot_compact_blocks
+      , tot_mut_blocks
+      , n_alloc_blocks - tot_live_blocks);
+
+  fprintf(hp_file, "---------Block Level Used/Total-----------\n");
+  reportWithUtil ("used/total bytes", tot_live_blocks, tot_live_words);
+  reportWithUtil (" movable", tot_reg_blocks, tot_reg_words);
+  reportWithUtil ("  generations", tot_reg_blocks - tot_gct_blocks,
+      tot_reg_words - tot_gct_words);
+  reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
+  reportWithUtil (" pinned", tot_large_blocks, tot_large_words);
+
+  if (enable_fine_grained_pinned) {
+    tot_large_multi_words += cur_pinned_words;
+    reportWithUtil ("  large"
+        , tot_large_single_blocks, tot_large_single_words);
+    reportWithUtil ("  small"
+        , tot_large_multi_objs, tot_large_multi_words);
+  }
+  fprintf(hp_file, " compact (pinned): %lu\n"
+      , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
+  reportWithUtil (" mut_lists (pinned)", tot_mut_blocks, tot_mut_words);
+
+  if (enable_fine_grained_pinned) {
+    fprintf(hp_file, "---------Large object counts-----------\n");
+    fprintf(hp_file,
+          "Pinned object count: %u\n"
+          " large: %u\n"
+          " small: %u\n"
+        , tot_large_objs
+        , tot_large_objs - tot_large_multi_objs
+        , tot_large_multi_objs);
+  }
+  if (verbose) {
+    fprintf(hp_file, "compact object count: %u\n", tot_compact_objs);
+  }
+
+  if (enable_fine_grained_pinned) {
+    if (tot_large_words != tot_large_multi_words + tot_large_single_words) {
+      barf ("tot_large_words %lu != tot_large_multi_words %lu + "
+            "tot_large_single_words %lu\n",
+            tot_large_words, tot_large_multi_words, tot_large_single_words);
+    }
+  }
+
+  /*
+  fprintf(hp_file, "live bytes (total,large,compact,slop):%lu,%lu,%lu,%lu\n"
+        , stats.gc.live_bytes
+        , stats.gc.large_objects_bytes
+        , stats.gc.compact_bytes
+        , stats.gc.slop_bytes);
+  */
+  //fprintf(hp_file, "---------End of Haskell Heap Summary-----------\n");
+
+  /*
+  if (verbose) {
+    // Only blocks with multiple objects can cause block level
+    // fragmentation.  Large object blocks can cause mega block level
+    // fragmentation but they can be identified by the heap traversal
+    // output, or we can dump those as well here.
+    //
+    // Technically, unpinned large can be moved to reduce megablock
+    // level fragmentation. We can allocate BF_PINNED memory from
+    // separate megablocks. BF_LARGE without BF_PINNED can be moved by
+    // the GC. Though this will break the assumption that BF_LARGE
+    // cannot be moved e.g. isByteArrayPinned primitive returns
+    // pinned even if only BF_LARGE is set.
+    fprintf(hp_file, "Pinned small object blocks\n");
+    for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
+        gen = &generations[g];
+
+        for (bd = gen->large_objects; bd; bd = bd->link) {
+            if (bd->blocks <= 1) {
+              StgClosure *c = UNTAG_CLOSURE((StgClosure *)(bd->start));
+              size_t size = getClosureSize(c);
+              // Print only if there are more than one objects in the block.
+              if (size < LARGE_OBJECT_THRESHOLD &&
+                    bd->start + size < bd->free) {
+                // assert (bd->blocks != 1);
+                fprintf(hp_file, "%p ", bd->start);
+              }
+            }
+        }
+    }
+    fprintf(hp_file, "\n");
+  }
+  */
+
+  gcStats st;
+  st.live_words = tot_live_words;
+  st.regular_words = tot_reg_words;
+  st.large_words = tot_large_words;
+  if (enable_fine_grained_pinned) {
+    st.small_pinned_words = tot_large_multi_words;
+    st.large_pinned_words = tot_large_single_words;
+  }
+  return st;
+}
+
+void liveDiff(size_t bytes) {
+    fprintf(hp_file, "stats.gc.live_bytes - live_bytes: %ld\n",
+          stats.gc.live_bytes - bytes);
 }
 
 /* -----------------------------------------------------------------------------

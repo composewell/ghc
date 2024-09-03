@@ -280,14 +280,18 @@ emitPrimOp dflags primop = case primop of
     emitAssign (CmmLocal res) (CmmReg (CmmLocal tmp))
 
   GetCCSOfOp -> \[arg] -> opIntoRegs $ \[res] -> do
+  {-
     let
       val
        | profileIsProfiling profile = costCentreFrom platform (cmmUntag platform arg)
        | otherwise                  = CmmLit (zeroCLit platform)
     emitAssign (CmmLocal res) val
+    -}
+    emitAssign (CmmLocal res) (CmmLit (zeroCLit dflags))
 
   GetCurrentCCSOp -> \[_] -> opIntoRegs $ \[res] ->
-    emitAssign (CmmLocal res) cccsExpr
+    -- emitAssign (CmmLocal res) (CmmLit (mkCCostCentreStack dontCareCCS))
+    emitAssign (CmmLocal res) (CmmLit (zeroCLit dflags))
 
   MyThreadIdOp -> \[] -> opIntoRegs $ \[res] ->
     emitAssign (CmmLocal res) currentTSOExpr
@@ -1639,6 +1643,7 @@ emitPrimOp dflags primop = case primop of
   NoDuplicateOp -> alwaysExternal
   ThreadStatusOp -> alwaysExternal
   ThreadCPUTimeOp -> alwaysExternal
+  TriggerProfOp -> alwaysExternal
   MkWeakOp -> alwaysExternal
   MkWeakNoFinalizerOp -> alwaysExternal
   AddCFinalizerToWeakOp -> alwaysExternal

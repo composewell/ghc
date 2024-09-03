@@ -19,6 +19,9 @@ extern W_ countBlocks       (bdescr *bd);
 extern W_ countAllocdBlocks (bdescr *bd);
 extern uint32_t returnMemoryToOS(uint32_t n);
 
+W_ countFreeMBlocks(void);
+W_ countFreeListBlocks(void);
+
 #if defined(DEBUG)
 void checkFreeListSanity(void);
 W_   countFreeList(void);

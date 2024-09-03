@@ -101,7 +101,7 @@ dynProfHdr profile ccs
 -- | Initialise the profiling field of an update frame
 initUpdFrameProf :: CmmExpr -> FCode ()
 initUpdFrameProf frame
-  = ifProfiling $        -- frame->header.prof.ccs = CCCS
+  = ifProfiling1 $        -- frame->header.prof.ccs = CCCS
     do platform <- getPlatform
        emitStore (cmmOffset platform frame (pc_OFFSET_StgHeader_ccs (platformConstants platform))) cccsExpr
         -- frame->header.prof.hp.rs = NULL (or frame-header.prof.hp.ldvw = 0)
@@ -138,7 +138,8 @@ We want this kind of code:
 
 saveCurrentCostCentre :: FCode (Maybe LocalReg)
         -- Returns Nothing if profiling is off
-saveCurrentCostCentre
+saveCurrentCostCentre = return Nothing
+{-
   = do dflags <- getDynFlags
        platform <- getPlatform
        if not (sccProfilingEnabled dflags)
@@ -146,12 +147,13 @@ saveCurrentCostCentre
            else do local_cc <- newTemp (ccType platform)
                    emitAssign (CmmLocal local_cc) cccsExpr
                    return (Just local_cc)
+-}
 
 restoreCurrentCostCentre :: Maybe LocalReg -> FCode ()
 restoreCurrentCostCentre Nothing
   = return ()
-restoreCurrentCostCentre (Just local_cc)
-  = emit (storeCurCCS (CmmReg (CmmLocal local_cc)))
+restoreCurrentCostCentre (Just local_cc) = return ()
+  -- = emit (storeCurCCS (CmmReg (CmmLocal local_cc)))
 
 
 -------------------------------------------------------------------------------
@@ -204,7 +206,20 @@ enterCostCentreFun ccs closure =
        else return () -- top-level function, nothing to do
 
 ifProfiling :: FCode () -> FCode ()
-ifProfiling code
+ifProfiling _code = return ()
+{-
+  = do profile <- targetProfile <$> getDynFlags
+       if profileIsProfiling profile
+           then code
+           else return ()
+-}
+
+-- XXX [PORTING]
+-- XXX Check the semantic meaning of the changed functions.
+-- XXX Compare if they match
+
+ifProfiling1 :: FCode () -> FCode ()
+ifProfiling1 code
   = do profile <- targetProfile <$> getDynFlags
        if profileIsProfiling profile
            then code
@@ -214,12 +229,15 @@ ifProfiling code
 --        Initialising Cost Centres & CCSs
 ---------------------------------------------------------------
 
+-- XXX Who calls this?
 initCostCentres :: CollectedCCs -> FCode ()
 -- Emit the declarations
-initCostCentres (local_CCs, singleton_CCSs)
+initCostCentres (local_CCs, singleton_CCSs) = return ()
+{-
   = ifProfiling $ do
       mapM_ emitCostCentreDecl local_CCs
       mapM_ emitCostCentreStackDecl singleton_CCSs
+-}
 
 
 emitCostCentreDecl :: CostCentre -> FCode ()
@@ -325,7 +343,8 @@ emitInfoTableProv ip = do
 -- Set the current cost centre stack
 
 emitSetCCC :: CostCentre -> Bool -> Bool -> FCode ()
-emitSetCCC cc tick push
+emitSetCCC cc tick push = return ()
+{-
  = do profile <- targetProfile <$> getDynFlags
       let platform = profilePlatform profile
       if not (profileIsProfiling profile)
@@ -334,6 +353,7 @@ emitSetCCC cc tick push
                   pushCostCentre tmp cccsExpr cc
                   when tick $ emit (bumpSccCount platform (CmmReg (CmmLocal tmp)))
                   when push $ emit (storeCurCCS (CmmReg (CmmLocal tmp)))
+-}
 
 pushCostCentre :: LocalReg -> CmmExpr -> CostCentre -> FCode ()
 pushCostCentre result ccs cc
@@ -364,11 +384,14 @@ staticLdvInit = zeroCLit
 -- Initial value of the LDV field in a dynamic closure
 --
 dynLdvInit :: Platform -> CmmExpr
+dynLdvInit = loadEra
+{-
 dynLdvInit platform =     -- (era << LDV_SHIFT) | LDV_STATE_CREATE
   CmmMachOp (mo_wordOr platform) [
       CmmMachOp (mo_wordShl platform) [loadEra platform, mkIntExpr platform (pc_LDV_SHIFT (platformConstants platform))],
       CmmLit (mkWordCLit platform (pc_ILDV_STATE_CREATE (platformConstants platform)))
   ]
+-}
 
 --
 -- Initialise the LDV word of a new closure
@@ -378,6 +401,7 @@ ldvRecordCreate closure = do
   platform <- getPlatform
   emit $ mkStore (ldvWord platform closure) (dynLdvInit platform)
 
+-- XXX We can use this to record a last used gc-id/timestamp
 --
 -- | Called when a closure is entered, marks the closure as having
 -- been "used".  The closure is not an "inherently used" one.  The
@@ -410,8 +434,13 @@ ldvEnter cl_ptr = do
                      mkNop
 
 loadEra :: Platform -> CmmExpr
+{-
+loadEra dflags =
+    CmmLoad (mkLblExpr (mkRtsCmmDataLabel (fsLit "era")))
+             (bWord dflags)
+-}
 loadEra platform = CmmMachOp (MO_UU_Conv (cIntWidth platform) (wordWidth platform))
-    [CmmLoad (mkLblExpr (mkRtsCmmDataLabel (fsLit "era")))
+    [CmmLoad (mkLblExpr (mkRtsCmmDataLabel (fsLit "flip")))
              (cInt platform)
              NaturallyAligned]
 

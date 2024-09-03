@@ -9,12 +9,31 @@
 
 #pragma once
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 #include <rts/Types.h>
 #include "RetainerSet.h"
 
 #include "BeginPrivate.h"
+
+// -----------------------------------------------------------------------------
+// -- Prof reporting options
+// -----------------------------------------------------------------------------
+
+enum ReportType {
+  GC_WINDOW,
+  GC_SINCE,
+  GC_STATS
+};
+
+extern uint64_t gcDiffNewest;
+extern uint64_t gcDiffOldest;
+extern uint64_t gcAbsOldest;
+extern enum ReportType report;
+extern bool isReportVerbose;
+extern bool enable_fine_grained_pinned;
+
+// -----------------------------------------------------------------------------
 
 typedef enum {
     // Object with fixed layout. Keeps an information about that
@@ -75,6 +94,9 @@ typedef union stackAccum_ {
     StgWord subtree_sizeW;
 } stackAccum;
 
+// [PORTING]
+// New fields have been added to stackElement_
+
 /**
  * An element of the traversal work-stack. Besides the closure itself this also
  * stores it's parent, associated data and an accumulator.
@@ -92,6 +114,21 @@ typedef struct stackElement_ {
     struct stackElement_ *sep; // stackElement of parent closure
     stackData data;
     stackAccum accum;
+    // We traverse all the children of a node before we print the node. We do
+    // this so that we can decide to print or not print the node based on
+    // whether we are printing any of the children. We may not print any
+    // children if they do not pass the filtering criteria, in that case we
+    // want to skip printing the node as well.
+    //
+    // When traversing we keep the aggregate size of all the children of
+    // the node in se_subtree_stats. When we start traversing a child we save
+    // the parent's se_subtree_stats in se_parent_stats so that we can use
+    // se_subtree_stats for the children of the current node.
+    traversalStats se_parent_stats;
+    traversalStats se_subtree_stats;
+    int se_dup_count;
+    int se_level;
+    bool se_done;
 } stackElement;
 
 typedef struct traverseState_ {
@@ -225,7 +262,7 @@ bool isTravDataValid(const traverseState *ts, const StgClosure *c);
 
 void traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb);
 void traversePushRoot(traverseState *ts, StgClosure *c, StgClosure *cp, stackData data);
-void traversePushClosure(traverseState *ts, StgClosure *c, StgClosure *cp, stackElement *sep, stackData data);
+void traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp, stackData data);
 bool traverseMaybeInitClosureData(const traverseState* ts, StgClosure *c);
 void traverseInvalidateClosureData(traverseState* ts);
 

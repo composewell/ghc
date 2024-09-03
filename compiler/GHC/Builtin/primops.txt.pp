@@ -1686,7 +1686,7 @@ primop CasSmallArrayOp  "casSmallArray#" GenPrimOp
 section "Byte Arrays"
         {A {\tt ByteArray\#} is a region of
          raw memory in the garbage-collected heap, which is not
-         scanned for pointers. 
+         scanned for pointers.
          There are three sets of operations for accessing byte array contents:
          index for reading from immutable byte arrays, and read/write
          for mutable byte arrays.  Each set contains operations for a
@@ -1708,19 +1708,19 @@ primtype ByteArray#
 
   The immutable and mutable variants are commonly used for scenarios requiring high-performance data structures,
   like Text, Primitive Vector, Unboxed Array, and ShortByteString.
- 
+
   Another application of fundamental importance is 'Integer', which is backed by 'ByteArray#'.
- 
+
   The representation on the heap of a Byte Array is:
- 
+
   > +------------+-----------------+-----------------------+
   > |            |                 |                       |
   > |   HEADER   | SIZE (in bytes) |       PAYLOAD         |
   > |            |                 |                       |
   > +------------+-----------------+-----------------------+
- 
+
   To obtain a pointer to actual payload (e.g., for FFI purposes) use 'byteArrayContents#' or 'mutableByteArrayContents#'.
- 
+
   Alternatively, enabling the UnliftedFFITypes extension
   allows to mention 'ByteArray#' and 'MutableByteArray#' in FFI type signatures directly.
 }
@@ -2948,6 +2948,12 @@ primop  ThreadStatusOp "threadStatus#" GenPrimOp
 
 primop  ThreadCPUTimeOp "threadCPUTime#" GenPrimOp
    State# RealWorld -> (# State# RealWorld, INT64, INT64, Int32#, Int32# #)
+   with
+   out_of_line = True
+   has_side_effects = True
+
+primop  TriggerProfOp "triggerProf#" GenPrimOp
+   Word8# -> WORD64 -> WORD64 -> WORD64 -> State# RealWorld -> State# RealWorld
    with
    out_of_line = True
    has_side_effects = True

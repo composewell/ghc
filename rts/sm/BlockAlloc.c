@@ -446,6 +446,9 @@ allocGroupOnNode (uint32_t node, W_ n)
 
         // n_alloc_blocks doesn't count the extra blocks we get in a
         // megablock group.
+        // XXX But we are counting that here. Will this assert in
+        // sm/Sanity.c pass?
+        // ASSERT(n_alloc_blocks == live_blocks);
         recordAllocatedBlocks(node, mblocks * BLOCKS_PER_MBLOCK);
 
         bd = alloc_mega_group(node, mblocks);
@@ -1037,6 +1040,37 @@ uint32_t returnMemoryToOS(uint32_t n /* megablocks */)
 /* -----------------------------------------------------------------------------
    Debugging
    -------------------------------------------------------------------------- */
+
+W_ countFreeMBlocks(void)
+{
+  bdescr *bd;
+  W_ total_blocks = 0;
+  uint32_t node;
+
+  for (node = 0; node < n_numa_nodes; node++) {
+      for (bd = free_mblock_list[node]; bd != NULL; bd = bd->link) {
+          total_blocks += BLOCKS_TO_MBLOCKS(bd->blocks);
+      }
+  }
+  return total_blocks;
+}
+
+W_ countFreeListBlocks(void)
+{
+  bdescr *bd;
+  W_ total_blocks = 0;
+  StgWord ln;
+  uint32_t node;
+
+  for (node = 0; node < n_numa_nodes; node++) {
+      for (ln=0; ln < NUM_FREE_LISTS; ln++) {
+          for (bd = free_list[node][ln]; bd != NULL; bd = bd->link) {
+              total_blocks += bd->blocks;
+          }
+      }
+  }
+  return total_blocks;
+}
 
 #if defined(DEBUG)
 static void

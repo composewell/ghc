@@ -111,7 +111,7 @@ static void bad_option (const char *s);
 static void read_debug_flags(const char *arg);
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 static bool read_heap_profiling_flag(const char *arg);
 #endif
 
@@ -205,16 +205,22 @@ void initRtsFlagsDefaults(void)
     RtsFlags.DebugFlags.numa            = false;
     RtsFlags.DebugFlags.compact         = false;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     RtsFlags.CcFlags.doCostCentres      = COST_CENTRES_NONE;
     RtsFlags.CcFlags.outputFileNameStem = NULL;
 #endif /* PROFILING */
 
     RtsFlags.ProfFlags.doHeapProfile      = false;
     RtsFlags.ProfFlags.heapProfileInterval = USToTime(100000); // 100ms
-    RtsFlags.ProfFlags.startHeapProfileAtStartup = true;
 
-#if defined(PROFILING)
+    // [PORTING]
+    // startHeapProfileAtStartup is new and possibly should be set to false?
+
+    RtsFlags.ProfFlags.startHeapProfileAtStartup = true;
+    RtsFlags.ProfFlags.heapProfileIntervalTicks = 0;
+
+
+#if defined(GC_PROFILING)
     RtsFlags.ProfFlags.showCCSOnException = false;
     RtsFlags.ProfFlags.maxRetainerSetSize = 8;
     RtsFlags.ProfFlags.ccsLength          = 25;
@@ -880,7 +886,7 @@ errorBelch("the flag %s requires the program to be built with -ticky", \
 error = true;
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 # define PROFILING_BUILD_ONLY(x)   x
 #else
 # define PROFILING_BUILD_ONLY(x) \
@@ -1438,7 +1444,7 @@ error = true;
                       }
                   ) break;
               case 'h': /* serial heap profile */
-#if !defined(PROFILING)
+#if !defined(GC_PROFILING)
                 switch (rts_argv[arg][2]) {
                   case '\0':
                     errorBelch("-h is deprecated and will be removed in the next release (9.4),\nuse -hT instead.");
@@ -1469,13 +1475,22 @@ error = true;
                 if (rts_argv[arg][2] == '\0') {
                   /* use default */
                 } else {
+                    // [PORTING]
+                    // We should not error out if parseDouble fails.
+
+                    /*
                     double intervalSeconds = parseDouble(rts_argv[arg]+2, &error);
 
                     if (error) {
                         errorBelch("bad value for -i");
                     }
+                    */
+                    RtsFlags.ProfFlags.heapProfileIntervalTicks =
+                        atoi(rts_argv[arg]+2);
+                    /*
                     RtsFlags.ProfFlags.heapProfileInterval =
                         fsecondsToTime(intervalSeconds);
+                    */
                 }
                 break;
 
@@ -1839,6 +1854,11 @@ static void normaliseRtsOpts (void)
                     RtsFlags.MiscFlags.tickInterval);
     }
 
+    // [PORTING]
+    // Is ctxtSwitchTime even in 8.10?
+    // Should it be commented out?
+
+    /*
     if (RtsFlags.ProfFlags.heapProfileInterval > 0) {
         RtsFlags.MiscFlags.tickInterval =
             stg_min(RtsFlags.ProfFlags.heapProfileInterval,
@@ -1860,6 +1880,7 @@ static void normaliseRtsOpts (void)
     } else {
         RtsFlags.ProfFlags.heapProfileIntervalTicks = 0;
     }
+    */
 
     if (RtsFlags.TraceFlags.eventlogFlushTime > 0) {
         RtsFlags.TraceFlags.eventlogFlushTicks =
@@ -2193,7 +2214,7 @@ static void read_debug_flags(const char* arg)
 }
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 // Parse a "-h" flag, returning whether the parse resulted in an error.
 static bool read_heap_profiling_flag(const char *arg)
 {
@@ -2236,6 +2257,7 @@ static bool read_heap_profiling_flag(const char *arg)
                 char *selector = stgStrndup(left, right - left + 1);
 
                 switch (arg[2]) {
+                  /*
                 case 'c': // cost centre label select
                     RtsFlags.ProfFlags.ccSelector = selector;
                     break;
@@ -2254,14 +2276,17 @@ static bool read_heap_profiling_flag(const char *arg)
                 case 'y': // closure type select
                     RtsFlags.ProfFlags.typeSelector = selector;
                     break;
+                    */
                 case 'R':
                 case 'r': // retainer select
                     RtsFlags.ProfFlags.retainerSelector = selector;
                     break;
+                    /*
                 case 'B':
                 case 'b': // biography select
                     RtsFlags.ProfFlags.bioSelector = selector;
                     break;
+                    */
                 default:
                     free(selector);
                 }
@@ -2276,6 +2301,7 @@ static bool read_heap_profiling_flag(const char *arg)
         }
 
         switch (arg[2]) {
+          /*
         case '\0':
         case 'C':
         case 'c':
@@ -2293,6 +2319,7 @@ static bool read_heap_profiling_flag(const char *arg)
         case 'y':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_TYPE;
             break;
+            */
         case 'i':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_INFO_TABLE;
             break;
@@ -2300,6 +2327,7 @@ static bool read_heap_profiling_flag(const char *arg)
         case 'r':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_RETAINER;
             break;
+            /*
         case 'B':
         case 'b':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_LDV;
@@ -2307,6 +2335,7 @@ static bool read_heap_profiling_flag(const char *arg)
         case 'T':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_CLOSURE_TYPE;
             break;
+            */
         }
         break;
 

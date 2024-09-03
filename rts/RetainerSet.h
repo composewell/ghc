@@ -11,7 +11,7 @@
 
 #include <stdio.h>
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 #include "BeginPrivate.h"
 
@@ -31,6 +31,7 @@
 */
 
 
+// XXX Use info table ptr instead of ccs ptr
 typedef CostCentreStack *retainer;
 
 /*

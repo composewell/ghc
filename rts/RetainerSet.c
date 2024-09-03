@@ -7,7 +7,7 @@
  *
  * ---------------------------------------------------------------------------*/
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 
 #include "PosixSource.h"
 #include "Rts.h"

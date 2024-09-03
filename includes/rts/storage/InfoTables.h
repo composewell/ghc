@@ -180,7 +180,7 @@ typedef struct StgInfoTable_ {
     StgFunPtr       entry;      /* pointer to the entry code */
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     StgProfInfo     prof;
 #endif
 

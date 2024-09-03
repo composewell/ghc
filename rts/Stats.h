@@ -43,12 +43,12 @@ void      stat_endNonmovingGcSync(void);
 void      stat_startNonmovingGc (void);
 void      stat_endNonmovingGc (void);
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void      stat_startRP(void);
 void      stat_endRP(uint32_t, int, double);
 #endif /* PROFILING */
 
-#if defined(PROFILING) || defined(DEBUG)
+#if defined(GC_PROFILING) || defined(DEBUG)
 void      stat_startHeapCensus(void);
 void      stat_endHeapCensus(void);
 #endif
@@ -113,5 +113,21 @@ typedef struct RTSSummaryStats_ {
     // one for each generation, 0 first
     GenerationSummaryStats* gc_summary_stats;
 } RTSSummaryStats;
+
+// [PORTING]
+// StgWord64 getGCCPUStats(void); does not exist in 9.2 but exists in 8.10
+
+typedef struct {
+  W_ live_words;
+  W_ regular_words;
+  W_ large_words;
+  W_ small_pinned_words;
+  W_ large_pinned_words;
+} gcStats;
+
+uint32_t getNumGcs(void);
+void reportWithUtilWords (char *desc, W_ total_words, W_ used_words);
+gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned);
+void liveDiff(size_t bytes);
 
 #include "EndPrivate.h"

@@ -17,6 +17,7 @@ quickFlavour = defaultFlavour
     , args        = defaultBuilderArgs <> quickArgs <> defaultPackageArgs
     , libraryWays = mconcat
                     [ pure [vanilla]
+                    , notStage0 ? pure [profiling]
                     , notStage0 ? platformSupportsSharedLibs ? pure [dynamic] ]
     , rtsWays     = mconcat
                     [ pure
@@ -24,7 +25,8 @@ quickFlavour = defaultFlavour
                       , threadedDebug, threadedLogging, threaded ]
                     , notStage0 ? platformSupportsSharedLibs ? pure
                       [ dynamic, debugDynamic, threadedDynamic, loggingDynamic
-                      , threadedDebugDynamic, threadedLoggingDynamic ]
+                      , threadedDebugDynamic, threadedLoggingDynamic
+                      , profiling, threadedProfiling, debugProfiling, threadedDebugProfiling]
                     ] }
 
 quickArgs :: Args

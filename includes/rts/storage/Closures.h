@@ -60,14 +60,14 @@ typedef struct {
     // start of the info table. See
     // https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/rts/storage/heap-objects#tables_next_to_code.
     const StgInfoTable* info;
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     StgProfHeader         prof;
 #endif
 } StgHeader;
 
 typedef struct {
     const StgInfoTable* info;
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     StgProfHeader         prof;
 #endif
     StgSMPThunkHeader     smp;

@@ -572,7 +572,7 @@ lockCAF (StgRegTable *reg, StgIndStatic *caf)
         bh = (StgInd *)allocate(cap, sizeofW(*bh));
     }
     bh->indirectee = (StgClosure *)cap->r.rCurrentTSO;
-    SET_HDR(bh, &stg_CAF_BLACKHOLE_info, caf->header.prof.ccs);
+    SET_HDR(bh, &stg_CAF_BLACKHOLE_info, (uint64_t)getNumGcs());
 
     // RELEASE ordering to ensure that above writes are visible before we
     // introduce reference as CAF indirectee.

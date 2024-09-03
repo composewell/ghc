@@ -239,6 +239,9 @@ type CpeRhs  = CoreExpr    -- Non-terminal 'rhs'
 ************************************************************************
 -}
 
+-- XXX [PORTING]
+-- XXX This module is named coreSyn/CorePrep.hs in ghc 8.10
+
 corePrepPgm :: HscEnv -> Module -> ModLocation -> CoreProgram -> [TyCon]
             -> IO (CoreProgram, S.Set CostCentre)
 corePrepPgm hsc_env this_mod mod_loc binds data_tycons =
@@ -264,7 +267,7 @@ corePrepPgm hsc_env this_mod mod_loc binds data_tycons =
                       return (deFloatTop (floats1 `appendFloats` floats2))
 
     endPassIO hsc_env alwaysQualify CorePrep binds_out []
-    return (binds_out, cost_centres)
+    return (binds_out, S.empty)
   where
     dflags = hsc_dflags hsc_env
     logger = hsc_logger hsc_env

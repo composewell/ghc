@@ -378,9 +378,11 @@ just more arguments that we are passing on the stack (cml_args).
 slowArgs :: DynFlags -> [(ArgRep, Maybe CmmExpr)] -> [(ArgRep, Maybe CmmExpr)]
 slowArgs _ [] = []
 slowArgs dflags args -- careful: reps contains voids (V), but args does not
+{-
   | sccProfilingEnabled dflags
               = save_cccs ++ this_pat ++ slowArgs dflags rest_args
-  | otherwise =              this_pat ++ slowArgs dflags rest_args
+  | otherwise =-}
+  = this_pat ++ slowArgs dflags rest_args
   where
     (arg_pat, n)            = slowCallPattern (map fst args)
     (call_args, rest_args)  = splitAt n args

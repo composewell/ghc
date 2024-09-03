@@ -230,11 +230,13 @@ import qualified Data.Set as Set
 -- Setting variable info: top-level, binds, RHSs
 -- --------------------------------------------------------------
 
+-- [PORTING]
+-- Named compiler/stgSyn/CoreToStg.hs in 8.10
 
 coreToStg :: DynFlags -> Module -> ModLocation -> CoreProgram
           -> ([StgTopBinding], InfoTableProvMap, CollectedCCs)
 coreToStg dflags this_mod ml pgm
-  = (pgm'', denv, final_ccs)
+  = (pgm'', denv, emptyCollectedCCs)
   where
     (_, (local_ccs, local_cc_stacks), pgm')
       = coreTopBindsToStg dflags this_mod emptyVarEnv emptyCollectedCCs pgm

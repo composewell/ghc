@@ -7,12 +7,18 @@
  *
  * ---------------------------------------------------------------------------*/
 
-#if defined(PROFILING)
+// [PORTING]
+// THIS IS IMPROPERLY PORTED
+// THIS NEEDS SEMANTIC UNDERSTANDING AND
+
+#if defined(GC_PROFILING)
 
 #include <string.h>
 #include "PosixSource.h"
 #include "Rts.h"
 #include "sm/Storage.h"
+#include "Printer.h"
+#include "Stats.h"
 
 #include "TraverseHeap.h"
 
@@ -262,6 +268,69 @@ pushStackElement(traverseState *ts, const stackElement se)
     return ts->stackTop;
 }
 
+// [PORTING]
+// Things have been moved from TraverseHeap.c file to TraverseHeap.h file
+
+// XXX Optimize the stack usage
+typedef struct {
+  size_t total_size;
+  size_t filtered_size;
+  size_t large_size;
+  size_t small_pinned_size;
+} traversalStats;
+
+static void initTraversalStats (traversalStats *stats) {
+    stats->total_size = 0;
+    stats->filtered_size = 0;
+    stats->large_size = 0;
+    stats->small_pinned_size = 0;
+}
+
+static bool isClosurePinned (StgClosure *c) {
+    StgPtr p = (StgPtr)c;
+    bdescr *bd;
+
+    bd = Bdescr(p);
+    return ((bd->flags & (BF_PINNED | BF_LARGE | BF_COMPACT)) != 0);
+}
+
+static void updateTraversalStats (traversalStats *dst, StgClosure *c, size_t size) {
+    dst->total_size += size;
+    if (size * sizeof(W_) >= LARGE_OBJECT_THRESHOLD) {
+      dst->large_size += size;
+    } else {
+      if (isClosurePinned (c)) {
+        dst->small_pinned_size += size;
+      }
+    }
+}
+
+static traversalStats addTraversalStats (traversalStats *dst, traversalStats *src) {
+    traversalStats stats;
+
+    stats.total_size = dst->total_size + src->total_size;
+    stats.filtered_size = dst->filtered_size + src->filtered_size;
+    stats.large_size = dst->large_size + src->large_size;
+    stats.small_pinned_size = dst->small_pinned_size + src->small_pinned_size;
+
+    return stats;
+}
+
+static void accTraversalStats (traversalStats *dst, traversalStats *src) {
+    dst->total_size += src->total_size;
+    dst->filtered_size += src->filtered_size;
+    dst->large_size += src->large_size;
+    dst->small_pinned_size += src->small_pinned_size;
+}
+
+static bool checkTraversalStats (traversalStats *stats) {
+    return (stats->total_size == 0 &&
+      stats->filtered_size == 0 &&
+      stats->large_size == 0 &&
+      stats->small_pinned_size == 0);
+}
+
+
 /**
  * Push a single closure onto the traversal work-stack.
  *
@@ -270,7 +339,7 @@ pushStackElement(traverseState *ts, const stackElement se)
  *  data - data associated with closure.
  */
 inline void
-traversePushClosure(traverseState *ts, StgClosure *c, StgClosure *cp, stackElement *sep, stackData data) {
+traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp, stackData data) {
     stackElement se;
 
     se.c = c;
@@ -279,6 +348,30 @@ traversePushClosure(traverseState *ts, StgClosure *c, StgClosure *cp, stackEleme
     se.data = data;
     se.accum = (stackAccum)(StgWord)0;
     se.info.type = posTypeFresh;
+    se.se_level = level;
+    se.se_done = false;
+    initTraversalStats (&se.se_parent_stats);
+    initTraversalStats (&se.se_subtree_stats);
+    se.se_dup_count = 0;
+
+    pushStackElement(ts, se);
+};
+
+/* A dummy frame to indicate that a tree level is done */
+static inline void
+traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level,
+      traversalStats cur_stats, traverseState *ts) {
+    stackElement se;
+
+    se.c = c;
+    se.info.next.cp = cp;
+    se.data = data;
+    se.info.type = 0; // XXX ?
+    se.se_level = level;
+    se.se_done = true;
+    se.se_parent_stats = cur_stats;
+    initTraversalStats (&se.se_subtree_stats);
+    se.se_dup_count = 0;
 
     pushStackElement(ts, se);
 };
@@ -316,6 +409,10 @@ traversePushReturn(traverseState *ts, StgClosure *c, stackAccum acc, stackElemen
     se.info.type = posTypeEmpty;
     return pushStackElement(ts, se);
 };
+
+// [PORTING]
+// traversePushChildren has been renamed to traverseGetChildren?
+// This needs some more scrutiny to port.
 
 /**
  * traverseGetChildren() extracts the first child of 'c' in 'first_child' and if
@@ -598,6 +695,8 @@ popStackElement(traverseState *ts) {
     debug("stackSize = %d\n", ts->stackSize);
 }
 
+
+
 /**
  *  callReturnAndPopStackElement(): Call 'traversalState.return_cb' and remove a
  *  depleted stackElement from the top of the traversal work-stack.
@@ -617,6 +716,171 @@ callReturnAndPopStackElement(traverseState *ts)
 
     popStackElement(ts);
 }
+
+extern FILE *hp_file;
+extern size_t getClosureSize(const StgClosure *p);
+
+#define MAX_SPACES 100
+
+static void fillSpaces(char *spaces, int cur_level) {
+    int i;
+
+    for (i=0; i < cur_level && i < MAX_SPACES - 1; i++) {
+      spaces[i] = ' ';
+    }
+    spaces[i] = '\0';
+}
+
+static bool collapseDuplicates = 1;
+
+// XXX Report maximum, average object size, and histogram
+//
+// CAUTION: modifies the ts->stackTop->se_dup_count.
+static void printNode (bool first_visit, traverseState *ts, stackElement *se,
+    int cur_level, traversalStats cur_stats) {
+
+    bool shouldReportRevisit = false;
+    if (!first_visit && !shouldReportRevisit) {
+        return;
+    }
+
+    StgClosure *c_untagged;
+    c_untagged = UNTAG_CLOSURE(se->c);
+    size_t cl_size;
+    char spaces[MAX_SPACES];
+    const StgInfoTable *info = get_itbl(c_untagged);
+    bool cl_static = false;
+
+    if ((char *)c_untagged < (char *)mblock_address_space.begin) {
+      cl_static = true;
+    }
+
+    if (!first_visit && cl_static == true) {
+      return;
+    }
+
+    cl_size = getClosureSize(c_untagged);
+    if (collapseDuplicates && !isEmptyWorkStack(ts) && first_visit) {
+      stackElement *se1 = ts->stackTop;
+      const StgInfoTable *info = get_itbl(c_untagged);
+      const StgInfoTable *pinfo = get_itbl(UNTAG_CLOSURE(se1->c));
+
+      if (strcmp(GET_PROF_TYPE(info), GET_PROF_TYPE(pinfo)) == 0
+        && strcmp(GET_PROF_DESC(info), GET_PROF_DESC(pinfo)) == 0
+        && getClosureSize(UNTAG_CLOSURE(se1->c)) == cl_size) {
+        se1->se_dup_count = se1->se_dup_count + se->se_dup_count + 1;
+        return;
+      }
+    }
+
+    // We print the static closure size as 0 because we do not account it.
+    if (cl_static == true) {
+      cl_size = 0;
+    }
+    fillSpaces(spaces, cur_level);
+    fprintf (hp_file
+          , "%s%d %p %s {%s} {%s} {%lu}:"
+          , spaces
+          , cur_level
+          , c_untagged
+          , closure_type_names[info->type]
+          , GET_PROF_TYPE(info)
+          , GET_PROF_DESC(info)
+          , (StgWord64) c_untagged->header.prof.ccs);
+    if (se->se_dup_count > 0) {
+      fprintf (hp_file, " %lu (x%d) [%lu]"
+              , cl_size
+              , (se->se_dup_count+1)
+              , cur_stats.total_size);
+    } else {
+      fprintf (hp_file, " %lu [%lu]", cl_size, cur_stats.total_size);
+    }
+
+    // XXX we can mark COMPACT as well if required.
+    if (cur_stats.total_size == cur_stats.large_size) {
+      fprintf (hp_file, " LARGE");
+    } else if (cur_stats.total_size == cur_stats.small_pinned_size) {
+      fprintf (hp_file, " PINNED");
+    }
+
+    if (first_visit) {
+      fprintf (hp_file, "\n");
+    } else {
+      fprintf (hp_file, " (revisit)\n");
+    }
+    return;
+}
+
+bool traverseIsFirstVisit(StgClosure *c);
+
+// XXX Frequency of doing the profile should be related to the window size.
+// Such that we are checking a window of particular size and in the next check
+// we slide past that.
+// XXX We can also implement traversing only those objects which were
+// created/mutated since the last check, using gcid to identify the
+// creation generation. If an object is old it's entire subtree check
+// can be avoided.
+// XXX We can also implement generational gc at a finer granularity using gcid
+// as the generation.
+uint64_t gcDiffNewest = 10;
+uint64_t gcDiffOldest = 20;
+uint64_t gcAbsOldest = 10;
+enum ReportType report = GC_WINDOW;
+bool isReportVerbose = false;
+bool enable_fine_grained_pinned = true;
+
+// In words. Display only objects larger than this.
+// uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
+uint64_t sizeThreshold = 0;
+// When set to false, do not display unpinned blocks, only pinned are
+// displayed.
+bool enableUnpinned = true;
+
+static const char* stringifyReportType(enum ReportType rep)
+{
+   switch (rep)
+   {
+      case GC_SINCE: return "GC_SINCE";
+      case GC_WINDOW: return "GC_WINDOW";
+      case GC_STATS: return "GC_STATS";
+      default: barf ("stringifyReportType: invalid report type\n");
+   }
+}
+
+static bool filterClosure (StgClosure *c, size_t size) {
+    // We increment the stats before heap traversal.
+    uint64_t curGC = (uint64_t) getNumGcs() - 1;
+    uint64_t gcid = (StgWord64) c->header.prof.ccs;
+
+    if (size < sizeThreshold) {
+      return false;
+    }
+
+    switch (report) {
+      case GC_WINDOW:
+        if (gcid < curGC - gcDiffOldest || gcid > curGC - gcDiffNewest) {
+          return false;
+        }
+        break;
+      case GC_SINCE:
+        if (gcid < gcAbsOldest || gcid > curGC - gcDiffNewest) {
+          return false;
+        }
+        break;
+      case GC_STATS: return false;
+      default: barf("filterClosure: unhandled report type\n");
+    }
+
+    // XXX Reuse the isClosurePinned result from previous test?
+    if (enableUnpinned == false && !isClosurePinned(c)) {
+      return false;
+    }
+
+    return true;
+}
+
+// [PORTING]
+// traversePop signature has changed. Will require some effort to port.
 
 /**
  *  Finds the next object to be considered for retainer profiling and store
@@ -638,6 +902,10 @@ callReturnAndPopStackElement(traverseState *ts)
  *  Note:
  *
  *    It is okay to call this function even when the work-stack is empty.
+ *
+ *  cur_stats is always the current subtree size. The size of the tree before
+ *  this subtree is stored in se_size. As we come up from a subtree we add the
+ *  size to the parent's se_size.
  */
 STATIC_INLINE void
 traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data, stackElement **sep)
@@ -872,6 +1140,17 @@ traverseMaybeInitClosureData(const traverseState* ts, StgClosure *c)
     return false;
 }
 
+bool
+traverseIsFirstVisit(StgClosure *c)
+{
+  // isTravDataValid means trav bit is same as flip bit.
+    if (!isTravDataValid(c)) {
+        return true;
+    }
+    return false;
+}
+
+
 /**
  * Call traversePushClosure for each of the closures covered by a large bitmap.
  */
@@ -886,7 +1165,7 @@ traverseLargeBitmap(traverseState *ts, StgPtr p, StgLargeBitmap *large_bitmap,
     bitmap = large_bitmap->bitmap[b];
     for (i = 0; i < size; ) {
         if ((bitmap & 1) == 0) {
-            traversePushClosure(ts, (StgClosure *)*p, c, sep, data);
+            traversePushClosure(level, ts, (StgClosure *)*p, c, data);
         }
         i++;
         p++;
@@ -900,12 +1179,12 @@ traverseLargeBitmap(traverseState *ts, StgPtr p, StgLargeBitmap *large_bitmap,
 }
 
 STATIC_INLINE StgPtr
-traverseSmallBitmap (traverseState *ts, StgPtr p, uint32_t size, StgWord bitmap,
+traverseSmallBitmap (int level, traverseState *ts, StgPtr p, uint32_t size, StgWord bitmap,
                      StgClosure *c, stackElement *sep, stackData data)
 {
     while (size > 0) {
         if ((bitmap & 1) == 0) {
-            traversePushClosure(ts, (StgClosure *)*p, c, sep, data);
+            traversePushClosure(level, ts, (StgClosure *)*p, c, data);
         }
         p++;
         bitmap = bitmap >> 1;
@@ -913,6 +1192,11 @@ traverseSmallBitmap (traverseState *ts, StgPtr p, uint32_t size, StgWord bitmap,
     }
     return p;
 }
+
+// [PORTING]
+// traversePushStack signature has changed.
+// We need to add level to this.
+// We need to add level to a lot of places this is called as well
 
 /**
  *  traversePushStack(ts, cp, data, stackStart, stackEnd) pushes all the objects
@@ -1098,11 +1382,150 @@ resetMutableObjects(traverseState* ts)
         for (n = 0; n < getNumCapabilities(); n++) {
           for (bd = capabilities[n]->mut_lists[g]; bd != NULL; bd = bd->link) {
             for (ml = bd->start; ml < bd->free; ml++) {
-                traverseMaybeInitClosureData(ts, (StgClosure *)*ml);
+                bool first_visit = traverseMaybeInitClosureData((StgClosure *)*ml);
+                timesAnyObjectVisited++;
+                // Account the pointer word
+                (*mut_words)++;
+                if (first_visit) {
+                  StgClosure *c_untagged = UNTAG_CLOSURE((StgClosure *)*ml);
+                  const StgInfoTable *info = get_itbl(c_untagged);
+                  // fprintf (stderr, "----------> mut object missed\n");
+                  numObjectVisited++;
+                  if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+                      size_t cl_size = getClosureSize(c_untagged);
+                      updateTraversalStats (cur_stats, c_untagged, cl_size);
+                      if (filterClosure (c_untagged, cl_size)) {
+                        cur_stats->filtered_size += cl_size;
+                        fprintf (hp_file
+                              , "%s%d %p %s {%s} {%s} {%lu}:"
+                              , spaces
+                              , cur_level
+                              , c_untagged
+                              , closure_type_names[info->type]
+                              , GET_PROF_TYPE(info)
+                              , GET_PROF_DESC(info)
+                              , (StgWord64) c_untagged->header.prof.ccs);
+                        // XXX total_size is accumulated.
+                        fprintf (hp_file, " %lu [%lu]", cl_size, cur_stats->total_size);
+                      }
+                  }
+                }
             }
           }
         }
     }
+}
+
+static void getMemUsage(void) {
+    FILE *file;
+    char buffer[100];
+    char *filename = "/proc/self/statm";
+
+    file = fopen(filename, "r");
+    if (file == NULL) {
+        perror("Error opening /proc/self/statm");
+        return;
+    }
+
+    // XXX VmData and VmStk can be reported separately using /proc/self/stat.
+    // Also using the stack start address and current stack pointer we can find
+    // the current resident stack size.
+    // Foreign memory allocations will show up in C heap in VmRss.
+    // Any mmaps by the program will also show up in VmRss.
+    // XXX How is VmStk reported in case of multiple threads?
+    if (fgets(buffer, sizeof(buffer), file) != NULL) {
+        fprintf(hp_file, "VmSize,VmRss,RssFile,VmExe,_,VmData+VmStk,_ (pages):\n\t%s", buffer);
+    } else {
+        perror("Error reading /proc/self/statm");
+    }
+
+    fclose(file);
+}
+
+enum parseState {
+    findRss,
+    findAnon,
+    findVmFlags,
+    findHeader
+};
+
+static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
+    FILE *file;
+    char buffer[4096];
+    char header[4096];
+    char *filename = "/proc/self/smaps";
+    char *rss = "Rss:";
+    size_t rssLen = strlen(rss);
+    char *anon = "Anonymous:";
+    size_t anonLen = strlen(anon);
+    char *vmflags = "VmFlags:";
+    size_t vmfLen = strlen(vmflags);
+    enum parseState state = findHeader;
+    size_t rssKb;
+    size_t total_rss = 0;
+    size_t total_anon = 0;
+    bool print_anon = true;
+
+    file = fopen(filename, "r");
+    if (file == NULL) {
+        perror("Error opening /proc/self/smaps");
+        return;
+    }
+
+    // XXX handle error
+    // XXX Print in sorted order
+    // XXX We are reading line by line, the maps might change while we are
+    // reading. For better results we should read the entire file in one go and
+    // then process.
+    while (fgets(buffer, sizeof(buffer), file)) {
+        switch (state) {
+            case findHeader:
+                strncpy (header, buffer, sizeof(header));
+                state = findRss;
+                continue;
+            case findRss:
+                if (strncmp(buffer, rss, rssLen) == 0) {
+                    strtok(buffer, " ");
+                    rssKb = atoll(strtok(NULL, " "));
+                    if (rssKb > 0) {
+                        total_rss += rssKb;
+                        if (verbose && rssKb >= threshold_rss_kb) {
+                            fprintf(hp_file, "%s", header);
+                            fprintf(hp_file, "Rss: %lu kB\n", rssKb);
+                            print_anon = true;
+                        } else {
+                            print_anon = false;
+                        }
+                        state = findAnon;
+                    } else {
+                        state = findVmFlags;
+                    }
+                }
+                continue;
+            case findAnon:
+                if (strncmp(buffer, anon, anonLen) == 0) {
+                    strtok(buffer, " ");
+                    rssKb = atoll(strtok(NULL, " "));
+                    total_anon += rssKb;
+                    if (print_anon) {
+                        fprintf(hp_file, "Anonymous: %lu kB\n", rssKb);
+                    }
+                    state = findVmFlags;
+                }
+                continue;
+            case findVmFlags:
+                if (strncmp(buffer, vmflags, vmfLen) == 0) {
+                    state = findHeader;
+                }
+                continue;
+            default: barf ("getMemMpas: illegal state\n");
+        }
+    }
+
+    fprintf(hp_file, "Total Rss: %lu kB\n", total_rss);
+    fprintf(hp_file, " File maps: %lu kB\n", total_rss - total_anon);
+    fprintf(hp_file, " Anonymous: %lu kB\n", total_anon);
+    fclose(file);
 }
 
 /**

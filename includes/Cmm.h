@@ -373,7 +373,7 @@
    Info tables
    ------------------------------------------------------------------------- */
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 #define PROF_HDR_FIELDS(w_,hdr1,hdr2)          \
   w_ hdr1,                                     \
   w_ hdr2,

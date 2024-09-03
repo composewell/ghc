@@ -67,6 +67,10 @@
 #if defined(TRACING)
 #include "eventlog/EventLog.h"
 #endif
+
+#include "TraverseHeap.h"
+
+
 /* -----------------------------------------------------------------------------
  * Global variables
  * -------------------------------------------------------------------------- */
@@ -610,6 +614,9 @@ run_thread:
     {
         StgRegTable *r;
 
+#if defined(GC_PROFILING)
+        t->prof.cccs = getNumGcs();
+#endif
         updateThreadCPUTimePre (cap, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
         cap = regTableToCapability(r);
@@ -671,8 +678,8 @@ run_thread:
 
     // Costs for the scheduler are assigned to CCS_SYSTEM
     pauseHeapProfTimer();
-#if defined(PROFILING)
-    cap->r.rCCCS = CCS_SYSTEM;
+#if defined(GC_PROFILING)
+    cap->r.rCCCS = -1;
 #endif
 
     schedulePostRunThread(cap,t);
@@ -1490,18 +1497,81 @@ scheduleHandleThreadFinished (Capability *cap, Task *task, StgTSO *t)
  * Perform a heap census
  * -------------------------------------------------------------------------- */
 
+static bool profileOnce = false;
+
+void triggerProf( StgWord8 reportGcType
+                , StgWord64 gcDNewest
+                , StgWord64 gcDOldest
+                , StgWord64 gcAOldest)
+{
+#if defined(GC_PROFILING)
+    // Bits and meaning
+    // 0, 1 == Report type
+    // 2 == Fine Grained Pinned Reporting
+    // 3 == Verbosity
+    StgWord8 typeOfReport = reportGcType & 3;
+    bool isFineGrainedPinnedReporting = ((reportGcType >> 2) & 1) == 1;
+    bool isVerbose = ((reportGcType >> 3) & 1) == 1;
+
+    switch (typeOfReport) {
+    case 0:
+        report = GC_SINCE;
+        break;
+    case 1:
+        report = GC_WINDOW;
+        break;
+    case 2:
+        report = GC_STATS;
+        break;
+    }
+    isReportVerbose = isVerbose;
+    enable_fine_grained_pinned = isFineGrainedPinnedReporting;
+
+    // XXX Is there a way to manually specify coercion?
+    // Int to Unsigned Int should be fine?
+    gcDiffNewest = gcDNewest;
+    gcDiffOldest = gcDOldest;
+    gcAbsOldest = gcAOldest;
+#endif
+    profileOnce = true;
+}
+
+// Note that if we are reporting heap profile the GC is forced to be a major
+// GC.
+enum profileType {
+  PROFILE_ON_GCID,
+  PROFILE_ON_TICK
+};
+
+static enum profileType profType = PROFILE_ON_GCID;
+
+// XXX Trigger dump if live-bytes exceeds a specified limit.
+// If live-bytes rate of increase is more than specified value.
+// If live bytes increases by certain percentage from the initial stable value.
 static bool
 scheduleNeedHeapProfile( bool ready_to_gc )
 {
     // When we have +RTS -i0 and we're heap profiling, do a census at
     // every GC.  This lets us get repeatable runs for debugging.
-    if (performHeapProfile ||
-        (RtsFlags.ProfFlags.heapProfileInterval==0 &&
-         RtsFlags.ProfFlags.doHeapProfile && ready_to_gc)) {
-        return true;
-    } else {
-        return false;
+
+    if (RtsFlags.ProfFlags.doHeapProfile && ready_to_gc) {
+      uint64_t numGcs = getNumGcs();
+      uint64_t gcFreq = RtsFlags.ProfFlags.heapProfileIntervalTicks;
+      bool triggerViaInterval = gcFreq > 0 && (numGcs % gcFreq == 0);
+      switch (profType) {
+        case PROFILE_ON_GCID:
+            return (profileOnce || triggerViaInterval);
+            break;
+        case PROFILE_ON_TICK:
+          if (RtsFlags.ProfFlags.heapProfileInterval == 0 ||
+              performHeapProfile) {
+                return true;
+          }
+          break;
+        default: barf("Unkown profile type: %d\n", profType);
+      }
     }
+    return false;
 }
 
 /* -----------------------------------------------------------------------------
@@ -2041,6 +2111,7 @@ delete_threads_and_gc:
     // The heap census itself is done during GarbageCollect().
     if (heap_census) {
         performHeapProfile = false;
+        profileOnce = false;
     }
 
 #if defined(THREADED_RTS)

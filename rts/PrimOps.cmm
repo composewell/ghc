@@ -40,6 +40,23 @@ import CLOSURE ghczmprim_GHCziTypes_False_closure;
 import CLOSURE CCS_MAIN;
 #endif
 
+// [PORTING]
+// LDV_RECORD_CREATE(mba); does not exist here
+// See how the code has changed and adapt accordingly
+// We need to add SET_GC_ID(mba); in proper places
+
+// For setting ccs we need to look for all places where the following macros
+// are called:
+// SET_HDR, SET_HDR_RELEASE, SET_ARR_HDR, OVERWRITE_INFO
+// In most places CCCS is set via SET_HDR. But in some places where that is not
+// called we have to set it explicitly.
+#ifdef GC_PROFILING
+#define SET_GC_ID(c) \
+    StgHeader_ccs(c) = CCCS
+#else
+#define SET_GC_ID(c)
+#endif
+
 /*-----------------------------------------------------------------------------
   Array Primitives
 
@@ -1143,6 +1160,12 @@ stg_threadCPUTimezh (/* no args */)
     return (sec_res, nsec_res, cur_allocated_res, count_thread_sched_out);
 }
 
+stg_triggerProfzh ( I8 reportGcType, I64 gcDNewest, I64 gcDOldest, I64 gcAOldest )
+{
+    ccall triggerProf(reportGcType, gcDNewest, gcDOldest, gcAOldest);
+    return ();
+}
+
 /* -----------------------------------------------------------------------------
  * TVar primitives
  * -------------------------------------------------------------------------- */
@@ -1669,7 +1692,9 @@ stg_takeMVarzh ( P_ mvar /* :: MVar a */ )
 
         StgMVarTSOQueue_link(q) = END_TSO_QUEUE;
         StgMVarTSOQueue_tso(q)  = CurrentTSO;
+        // XXX set appropriate CCS
         SET_HDR(q, stg_MVAR_TSO_QUEUE_info, CCS_SYSTEM);
+        SET_GC_ID(q);
         // Write barrier before we make the new MVAR_TSO_QUEUE
         // visible to other cores.
         // See Note [Heap memory barriers]
@@ -1841,6 +1866,7 @@ stg_putMVarzh ( P_ mvar, /* :: MVar a */
         StgMVarTSOQueue_tso(q)  = CurrentTSO;
 
         SET_HDR(q, stg_MVAR_TSO_QUEUE_info, CCS_SYSTEM);
+        SET_GC_ID(q);
         //See Note [Heap memory barriers]
         prim_write_barrier;
 
@@ -2052,6 +2078,7 @@ stg_readMVarzh ( P_ mvar, /* :: MVar a */ )
         StgMVarTSOQueue_tso(q)  = CurrentTSO;
 
         SET_HDR(q, stg_MVAR_TSO_QUEUE_info, CCS_SYSTEM);
+        SET_GC_ID(q);
         //See Note [Heap memory barriers]
         prim_write_barrier;
 
@@ -2185,6 +2212,10 @@ stg_readIOPortzh ( P_ ioport /* :: IOPort a */ )
         StgMVarTSOQueue_tso(q)  = CurrentTSO;
 
         SET_HDR(q, stg_MVAR_TSO_QUEUE_info, CCS_SYSTEM);
+        // [PORTING]
+        // This is an extra SET_GC_ID(q); that does not exist in the 8.10 change
+        // Verify the usage
+        SET_GC_ID(q);
         //See Note [Heap memory barriers]
         prim_write_barrier;
 
@@ -2398,7 +2429,9 @@ stg_newBCOzh ( P_ instrs,
 
     bco = Hp - bytes + WDS(1);
     // No memory barrier necessary as this is a new allocation.
+    // XXX What gc-id to use here?
     SET_HDR(bco, stg_BCO_info, CCS_MAIN);
+    SET_GC_ID(bco);
 
     StgBCO_instrs(bco)     = instrs;
     StgBCO_literals(bco)   = literals;
@@ -2435,7 +2468,9 @@ stg_mkApUpd0zh ( P_ bco )
 
     ap = Hp - SIZEOF_StgAP + WDS(1);
     // No memory barrier necessary as this is a new allocation.
+    // XXX What gc-id to use here?
     SET_HDR(ap, stg_AP_info, CCS_MAIN);
+    SET_GC_ID(ap);
 
     StgAP_n_args(ap) = HALF_W_(0);
     StgAP_fun(ap) = bco;

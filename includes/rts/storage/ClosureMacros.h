@@ -117,11 +117,13 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
    Macros for building closures
    -------------------------------------------------------------------------- */
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 /*
   The following macro works for both retainer profiling and LDV profiling. For
  retainer profiling, 'era' remains 0, so by setting the 'ldvw' field we also set
  'rs' to zero.
+
+ XXX we depend on correct flip bit?
 
  Note that we don't have to bother handling the 'flip' bit properly[1] since the
  retainer profiling code will just set 'rs' to NULL upon visiting a closure with
@@ -132,12 +134,14 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
  [1]: Technically we should set 'rs' to `NULL | flip`.
  */
 #define SET_PROF_HDR(c,ccs_)            \
-        ((c)->header.prof.ccs = ccs_,   \
-        LDV_RECORD_CREATE((c)))
+        ((c)->header.prof.ccs = ccs_);   \
+        LDV_RECORD_CREATE((c))
 #else
 #define SET_PROF_HDR(c,ccs)
 #endif
 
+// XXX Review all the places where SET_HDR* are called. We should not be
+// setting CCS for existing closures.
 #define SET_HDR(c,_info,ccs)                            \
    {                                                    \
         SET_PROF_HDR((StgClosure *)(c),ccs);            \
@@ -157,8 +161,12 @@ INLINE_HEADER StgHalfWord GET_TAG(const StgClosure *con)
 // Use when changing a closure from one kind to another
 #define OVERWRITE_INFO(c, new_info)                             \
     OVERWRITING_CLOSURE((StgClosure *)(c));                     \
-    SET_INFO((StgClosure *)(c), (new_info));                    \
-    LDV_RECORD_CREATE(c);
+    SET_INFO((StgClosure *)(c), (new_info));
+
+// GC-ID profiling does not need this as the old visit bit is valid. And we do
+// not need to change the era, that's gc-id for us. If we want to change gc-id
+// on overwriting then we have to change the ccs field.
+    /*LDV_RECORD_CREATE(c);*/
 
 /* -----------------------------------------------------------------------------
    How to get hold of the static link field for a static closure.
@@ -533,7 +541,7 @@ INLINE_HEADER StgWord8 *mutArrPtrsCard (StgMutArrPtrs *a, W_ n)
     do { (void) sizeof(c); (void) sizeof(off); } while(0)
 #endif
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
 void LDV_recordDead (const StgClosure *c, uint32_t size);
 RTS_PRIVATE bool isInherentlyUsed ( StgHalfWord closure_type );
 #endif
@@ -594,6 +602,10 @@ zeroSlop (StgClosure *p, uint32_t offset, uint32_t size, bool known_mutable)
         ((StgWord *)p)[i] = 0;
     }
 }
+
+// [PORTING]
+// overwritingClosure_ does not exist anymore.
+// See how it is replaced and make the changes accordingly
 
 EXTERN_INLINE void overwritingClosure (StgClosure *p);
 EXTERN_INLINE void overwritingClosure (StgClosure *p)

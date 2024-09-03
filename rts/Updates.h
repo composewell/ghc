@@ -39,12 +39,28 @@
                  PROF_HDR_FIELDS(w_,ccs,p2)              \
                  p_ updatee
 
+// XXX Use this in updateWithIndirection CMM version
+#ifdef GC_PROFILING
+#define SET_GC_ID(c) \
+    StgHeader_ccs(c) = 0;
+#else
+#define SET_GC_ID(c)
+#endif
+
+// XXX Use this in updateWithIndirection CMM version
+#ifdef GC_PROFILING
+#define SET_FLIP_BIT(c) \
+    StgHeader_ldvw(c) = 1;
+#else
+#define SET_FLIP_BIT(c)
+#endif
 /*
  * Getting the memory barriers correct here is quite tricky. Essentially
  * the write barrier ensures that any writes to the new indirectee are visible
  * before we introduce the indirection.
  * See Note [Heap memory barriers] in SMP.h.
  */
+// XXX Do we need to set gc-id here?
 #define updateWithIndirection(p1, p2, and_then) \
     W_ bd;                                                      \
                                                                 \
@@ -68,6 +84,13 @@
 
 #else /* !CMINUSMINUS */
 
+#ifdef GC_PROFILING
+#define SET_GC_ID(c) \
+    (((StgClosure *)(c))->header.prof.ccs) = 0;
+#else
+#define SET_GC_ID(c)
+#endif
+
 INLINE_HEADER void updateWithIndirection (Capability *cap,
                                           StgClosure *p1,
                                           StgClosure *p2)
@@ -89,6 +112,8 @@ INLINE_HEADER void updateWithIndirection (Capability *cap,
     OVERWRITING_CLOSURE(p1);
     RELEASE_STORE(&((StgInd *)p1)->indirectee, p2);
     SET_INFO_RELEASE(p1, &stg_BLACKHOLE_info);
+    // XXX Do we need to set gc-id here?
+    // SET_GC_ID(p1)
     LDV_RECORD_CREATE(p1);
 }
 

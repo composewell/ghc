@@ -396,7 +396,7 @@ static StgTVarWatchQueue *new_stg_tvar_watch_queue(Capability *cap,
                                                    StgClosure *closure) {
   StgTVarWatchQueue *result;
   result = (StgTVarWatchQueue *)allocate(cap, sizeofW(StgTVarWatchQueue));
-  SET_HDR (result, &stg_TVAR_WATCH_QUEUE_info, CCS_SYSTEM);
+  SET_HDR (result, &stg_TVAR_WATCH_QUEUE_info, (uint64_t)getNumGcs());
   result -> closure = closure;
   return result;
 }
@@ -404,7 +404,7 @@ static StgTVarWatchQueue *new_stg_tvar_watch_queue(Capability *cap,
 static StgTRecChunk *new_stg_trec_chunk(Capability *cap) {
   StgTRecChunk *result;
   result = (StgTRecChunk *)allocate(cap, sizeofW(StgTRecChunk));
-  SET_HDR (result, &stg_TREC_CHUNK_info, CCS_SYSTEM);
+  SET_HDR (result, &stg_TVAR_WATCH_QUEUE_info, (uint64_t)getNumGcs());
   result -> prev_chunk = END_STM_CHUNK_LIST;
   result -> next_entry_idx = 0;
   return result;
@@ -414,7 +414,7 @@ static StgTRecHeader *new_stg_trec_header(Capability *cap,
                                           StgTRecHeader *enclosing_trec) {
   StgTRecHeader *result;
   result = (StgTRecHeader *) allocate(cap, sizeofW(StgTRecHeader));
-  SET_HDR (result, &stg_TREC_HEADER_info, CCS_SYSTEM);
+  SET_HDR (result, &stg_TVAR_WATCH_QUEUE_info, (uint64_t)getNumGcs());
 
   result -> enclosing_trec = enclosing_trec;
   result -> current_chunk = new_stg_trec_chunk(cap);

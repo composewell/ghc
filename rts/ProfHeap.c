@@ -33,6 +33,13 @@
 #include <locale.h>
 #endif
 
+#if defined(GC_PROFILING)
+void
+LDV_recordDead( const StgClosure *c STG_UNUSED , uint32_t size  STG_UNUSED )
+{
+}
+#endif
+
 FILE *hp_file;
 static char *hp_filename; /* heap profile (hp2ps style) log file */
 
@@ -158,11 +165,16 @@ static bool closureSatisfiesConstraints( const StgClosure* p );
  * heap profile.
  * ------------------------------------------------------------------------- */
 static const void *
-closureIdentity( const StgClosure *p )
+closureIdentity( const StgClosure *p
+#if !defined(GC_PROFILING)
+    STG_UNUSED
+#endif
+    )
 {
     switch (RtsFlags.ProfFlags.doHeapProfile) {
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
+    /*
     case HEAP_BY_CCS:
         return p->header.prof.ccs;
     case HEAP_BY_MOD:
@@ -171,6 +183,7 @@ closureIdentity( const StgClosure *p )
         return GET_PROF_DESC(get_itbl(p));
     case HEAP_BY_TYPE:
         return GET_PROF_TYPE(get_itbl(p));
+    */
     case HEAP_BY_RETAINER:
         // AFAIK, the only closures in the heap which might not have a
         // valid retainer set are DEAD_WEAK closures.
@@ -180,6 +193,11 @@ closureIdentity( const StgClosure *p )
             return NULL;
 #endif
 
+    // [PORTING]
+    // This code is slightly different. The HEAP_BY_INFO_TABLE case does not
+    // exist in 8.10
+
+    /*
     case HEAP_BY_CLOSURE_TYPE:
     {
         const StgInfoTable *info;
@@ -197,10 +215,10 @@ closureIdentity( const StgClosure *p )
             return closure_type_names[info->type];
         }
     }
+    */
     case HEAP_BY_INFO_TABLE: {
         return get_itbl(p);
         }
-
     default:
         barf("closureIdentity");
     }
@@ -209,13 +227,15 @@ closureIdentity( const StgClosure *p )
 /* --------------------------------------------------------------------------
  * Profiling type predicates
  * ----------------------------------------------------------------------- */
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
+/*
 STATIC_INLINE bool
 doingLDVProfiling( void )
 {
     return (RtsFlags.ProfFlags.doHeapProfile == HEAP_BY_LDV
             || RtsFlags.ProfFlags.bioSelector != NULL);
 }
+*/
 
 bool
 doingRetainerProfiling( void )
@@ -495,13 +515,14 @@ initHeapProfiling(void)
         censuses[i].arena = NULL;
         censuses[i].hash = NULL;
     }
+    /* XXX change this */
     initEra( &censuses[era] );
 
     /* initProfilingLogFile(); */
     fprintf(hp_file, "JOB \"");
     printEscapedString(prog_name);
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     for (int i = 1; i < prog_argc; ++i) {
         fputc(' ', hp_file);
         printEscapedString(prog_argv[i]);
@@ -523,7 +544,7 @@ initHeapProfiling(void)
     printSample(true, 0);
     printSample(false, 0);
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     if (doingRetainerProfiling()) {
         initRetainerProfiling();
     }
@@ -543,7 +564,10 @@ endHeapProfiling(void)
 
     set_prof_locale();
 
-#if defined(PROFILING)
+// [PORTING]
+// Here, the set_prof_locale() is additional and does not exist in 8.10
+
+#if defined(GC_PROFILING)
     if (doingRetainerProfiling()) {
         endRetainerProfiling();
     } else if (doingLDVProfiling()) {
@@ -583,7 +607,8 @@ endHeapProfiling(void)
 
 
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
+/*
 static size_t
 buf_append(char *p, const char *q, char *end)
 {
@@ -595,6 +620,7 @@ buf_append(char *p, const char *q, char *end)
     }
     return m;
 }
+*/
 
 static void
 fprint_ccs(FILE *fp, CostCentreStack *ccs, uint32_t max_length)
@@ -910,6 +936,7 @@ dumpCensus( Census *census )
         if (count == 0) continue;
 
         switch (RtsFlags.ProfFlags.doHeapProfile) {
+        /*
         case HEAP_BY_CLOSURE_TYPE:
             fprintf(hp_file, "%s", (char *)ctr->identity);
             traceHeapProfSampleString(0, (char *)ctr->identity,
@@ -921,7 +948,11 @@ dumpCensus( Census *census )
             sprintf(str, "%p", ctr->identity);
             traceHeapProfSampleString(0, str, count * sizeof(W_));
             break;
-#if defined(PROFILING)
+        */
+        // [PORTING]
+        // Here HEAP_BY_INFO_TABLE is additional
+#if defined(GC_PROFILING)
+        /*
         case HEAP_BY_CCS:
             fprint_ccs(hp_file, (CostCentreStack *)ctr->identity,
                        RtsFlags.ProfFlags.ccsLength);
@@ -935,6 +966,7 @@ dumpCensus( Census *census )
             traceHeapProfSampleString(0, (char *)ctr->identity,
                                       count * sizeof(W_));
             break;
+        */
         case HEAP_BY_RETAINER:
         {
             RetainerSet *rs = (RetainerSet *)ctr->identity;
@@ -1000,7 +1032,7 @@ static void heapProfObject(Census *census, StgClosure *p, size_t size,
 
             identity = NULL;
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
             // subtract the profiling overhead
             real_size = size - sizeofW(StgProfHeader);
 #else
@@ -1238,6 +1270,154 @@ heapCensusBlock(Census *census, bdescr *bd)
     }
 }
 
+extern size_t getClosureSize(const StgClosure *p);
+
+// XXX Use closure_sizeW instead.
+// Size in Stg Words units.
+size_t getClosureSize(const StgClosure *p) {
+    const StgInfoTable *info;
+    size_t size;
+    //bool prim;
+
+    info = get_itbl(p);
+    //prim = false;
+
+    switch (info->type) {
+
+    case THUNK:
+        size = thunk_sizeW_fromITBL(info);
+        break;
+
+    case THUNK_1_1:
+    case THUNK_0_2:
+    case THUNK_2_0:
+        size = sizeofW(StgThunkHeader) + 2;
+        break;
+
+    case THUNK_1_0:
+    case THUNK_0_1:
+    case THUNK_SELECTOR:
+        size = sizeofW(StgThunkHeader) + 1;
+        break;
+
+    case FUN:
+    case BLACKHOLE:
+    case BLOCKING_QUEUE:
+    case FUN_1_0:
+    case FUN_0_1:
+    case FUN_1_1:
+    case FUN_0_2:
+    case FUN_2_0:
+    case CONSTR:
+    case CONSTR_NOCAF:
+    case CONSTR_1_0:
+    case CONSTR_0_1:
+    case CONSTR_1_1:
+    case CONSTR_0_2:
+    case CONSTR_2_0:
+        size = sizeW_fromITBL(info);
+        break;
+
+    case IND:
+        // Special case/Delicate Hack: INDs don't normally
+        // appear, since we're doing this heap census right
+        // after GC.  However, GarbageCollect() also does
+        // resurrectThreads(), which can update some
+        // blackholes when it calls raiseAsync() on the
+        // resurrected threads.  So we know that any IND will
+        // be the size of a BLACKHOLE.
+        size = BLACKHOLE_sizeW();
+        break;
+
+    case BCO:
+        //prim = true;
+        size = bco_sizeW((StgBCO *)p);
+        break;
+
+    case MVAR_CLEAN:
+    case MVAR_DIRTY:
+    case TVAR:
+    case WEAK:
+    case PRIM:
+    case MUT_PRIM:
+    case MUT_VAR_CLEAN:
+    case MUT_VAR_DIRTY:
+        //prim = true;
+        size = sizeW_fromITBL(info);
+        break;
+
+    case AP:
+        size = ap_sizeW((StgAP *)p);
+        break;
+
+    case PAP:
+        size = pap_sizeW((StgPAP *)p);
+        break;
+
+    case AP_STACK:
+        size = ap_stack_sizeW((StgAP_STACK *)p);
+        break;
+
+    case ARR_WORDS:
+        //prim = true;
+        size = arr_words_sizeW((StgArrBytes*)p);
+        break;
+
+    case MUT_ARR_PTRS_CLEAN:
+    case MUT_ARR_PTRS_DIRTY:
+    case MUT_ARR_PTRS_FROZEN_CLEAN:
+    case MUT_ARR_PTRS_FROZEN_DIRTY:
+        //prim = true;
+        size = mut_arr_ptrs_sizeW((StgMutArrPtrs *)p);
+        break;
+
+    case SMALL_MUT_ARR_PTRS_CLEAN:
+    case SMALL_MUT_ARR_PTRS_DIRTY:
+    case SMALL_MUT_ARR_PTRS_FROZEN_CLEAN:
+    case SMALL_MUT_ARR_PTRS_FROZEN_DIRTY:
+        //prim = true;
+        size = small_mut_arr_ptrs_sizeW((StgSmallMutArrPtrs *)p);
+        break;
+
+    case TSO:
+        //prim = true;
+        size = sizeofW(StgTSO);
+        break;
+
+    case STACK:
+        //prim = true;
+        size = stack_sizeW((StgStack*)p);
+        break;
+
+    case TREC_CHUNK:
+        //prim = true;
+        size = sizeofW(StgTRecChunk);
+        break;
+
+    case COMPACT_NFDATA:
+        barf("getClosureSize, found compact object in the wrong list");
+        break;
+
+    // XXX Is this correct?
+    case FUN_STATIC: size = sizeofW(StgClosure); break;
+    case THUNK_STATIC: size = sizeofW(StgClosure); break;
+    case IND_STATIC: size = sizeofW(StgIndStatic); break;
+
+    default:
+        barf("getClosureSize, unknown object: %d", info->type);
+    }
+
+#if defined(GC_PROFILING)
+    // subtract the profiling overhead
+    // return (size - sizeofW(StgProfHeader));
+    // XXX We can correlate the memory data with actual memory usage if we
+    // include the profiling overhead as well.
+    return size;
+#else
+    return size;
+#endif
+}
+
 /* -----------------------------------------------------------------------------
  * Code to perform a heap census.
  * -------------------------------------------------------------------------- */
@@ -1282,12 +1462,13 @@ void heapCensus (Time t)
 
 
   // calculate retainer sets if necessary
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
   if (doingRetainerProfiling()) {
       retainerProfile();
   }
 #endif
 
+/*
 #if defined(PROFILING)
   stat_startHeapCensus();
 #endif
@@ -1336,4 +1517,5 @@ void heapCensus (Time t)
 #if defined(PROFILING)
   stat_endHeapCensus();
 #endif
+*/
 }

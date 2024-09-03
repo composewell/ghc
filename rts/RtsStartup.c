@@ -379,7 +379,7 @@ hs_init_ghc(int *argc, char **argv[], RtsConfig rts_config)
     /* initialise thread label table (tso->char*) */
     initThreadLabelTable();
 
-#if defined(PROFILING)
+#if defined(GC_PROFILING)
     initProfiling();
 #endif
     traceInitEvent(dumpIPEToEventLog);

@@ -192,13 +192,16 @@ wayOptl _ WayDyn        = []
 wayOptl _ WayProf       = []
 wayOptl _ WayTracing    = []
 
+-- XXX [PORTING]
+-- XXX This module was named main/DynFlags.hs in ghc 8.10
+
 -- | Pass these options to the preprocessor when enabling this way
 wayOptP :: Platform -> Way -> [String]
 wayOptP _ (WayCustom {}) = []
 wayOptP _ WayThreaded = []
 wayOptP _ WayDebug    = []
 wayOptP _ WayDyn      = []
-wayOptP _ WayProf     = ["-DPROFILING"]
+wayOptP _ WayProf     = ["-DGC_PROFILING"]
 wayOptP _ WayTracing  = ["-DTRACING"]
 
 

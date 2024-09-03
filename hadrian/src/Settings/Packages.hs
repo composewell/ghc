@@ -271,7 +271,7 @@ rtsPackageArgs = package rts ? do
           , notM targetSupportsSMP           ? arg "-DNOSMP"
           , way `elem` [debug, debugDynamic] ? pure [ "-DTICKY_TICKY"
                                                     , "-optc-DTICKY_TICKY"]
-          , Profiling `wayUnit` way          ? arg "-DPROFILING"
+          , Profiling `wayUnit` way          ? arg "-DGC_PROFILING"
           , Threaded  `wayUnit` way          ? arg "-DTHREADED_RTS"
           , notM targetSupportsSMP           ? pure [ "-DNOSMP"
                                                     , "-optc-DNOSMP" ]
