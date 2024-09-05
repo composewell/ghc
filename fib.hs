@@ -1,5 +1,6 @@
 {-#  LANGUAGE  MagicHash  #-}
 {-#  LANGUAGE  UnboxedTuples  #-}
+{-#  LANGUAGE  BangPatterns  #-}
 
 import GHC.IO(IO(..))
 import Control.Concurrent
@@ -7,20 +8,38 @@ import GHC.Stack
 import GHC.Exts
 import GHC.Word
 import Data.Bits
+import Data.Array
+import qualified Data.ByteString as BS
 
 main = do
+    -- To get unpinned large blocks
+    let a = array (1,4000) ((1,1) : [(i, i * a!(i-1)) | i <- [2..100]])
+    let b = BS.pack [1..254]
+    let c = BS.pack $ concat $ replicate 9 [1..254]
+    let d = BS.pack $ concat $ replicate 9 [1..253]
     -- capabilities <- getNumCapabilities
     -- putStrLn $ "Number of capabilities: " ++ show capabilities
-    a  <-  f 20
+    print $ length a
+    print $ BS.length b
+    print $ BS.length c
+    print $ BS.length d
+    let !r1 = f 20
     triggerProf (ReportSince 0 0) True True
-    b  <-  g 30
-    print  $  a  +  b
+    let !r2 = f 30
+    print $ r1 + r2
+    -- threadDelay 100000000
+    print $ length a
+    print $ BS.last b
+    print $ BS.last c
+    print $ BS.last d
     errorWithStackTrace "hello"
 
     where
 
     f n  = fib n
     g n  = fib (n `div` 2)
+
+fib n = if n < 2 then 1 else fib (n-1) + fib (n-2)
 
 -- The following are equal
 -- ReportSince j i
@@ -60,11 +79,3 @@ triggerProf reportType verbose fineGrainedPinnedReporting = do
         if fineGrainedPinnedReporting
         then setBit i 2
         else i
-
-fib n =
-    if n < 2
-    then pure 1
-    else do
-          a <- fib (n-1)
-          b <- fib (n-2)
-          pure $ a + b
