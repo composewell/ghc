@@ -279,7 +279,7 @@ emitPrimOp dflags primop = case primop of
         [(baseExpr, AddrHint), ((CmmReg (CmmLocal tmp)), AddrHint)]
     emitAssign (CmmLocal res) (CmmReg (CmmLocal tmp))
 
-  GetCCSOfOp -> \[arg] -> opIntoRegs $ \[res] -> do
+  GetCCSOfOp -> \[_arg] -> opIntoRegs $ \[res] -> do
   {-
     let
       val

@@ -88,7 +88,10 @@ costCentreFrom platform cl = CmmLoad (cmmOffsetB platform cl (pc_OFFSET_StgHeade
 -- | The profiling header words in a static closure
 staticProfHdr :: Profile -> CostCentreStack -> [CmmLit]
 staticProfHdr profile ccs
-  | profileIsProfiling profile = [mkCCostCentreStack ccs, staticLdvInit platform]
+  | profileIsProfiling profile =
+  -- [mkCCostCentreStack ccs, staticLdvInit platform]
+   = [CmmInt 1010101010101 W64, staticLdvInit platform]
+
   | otherwise                  = []
   where platform = profilePlatform profile
 

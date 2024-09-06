@@ -1854,11 +1854,6 @@ static void normaliseRtsOpts (void)
                     RtsFlags.MiscFlags.tickInterval);
     }
 
-    // [PORTING]
-    // Is ctxtSwitchTime even in 8.10?
-    // Should it be commented out?
-
-    /*
     if (RtsFlags.ProfFlags.heapProfileInterval > 0) {
         RtsFlags.MiscFlags.tickInterval =
             stg_min(RtsFlags.ProfFlags.heapProfileInterval,
@@ -1873,6 +1868,7 @@ static void normaliseRtsOpts (void)
         RtsFlags.ConcFlags.ctxtSwitchTicks = 0;
     }
 
+    /*
     if (RtsFlags.ProfFlags.heapProfileInterval > 0) {
         RtsFlags.ProfFlags.heapProfileIntervalTicks =
             RtsFlags.ProfFlags.heapProfileInterval /
@@ -2319,10 +2315,10 @@ static bool read_heap_profiling_flag(const char *arg)
         case 'y':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_TYPE;
             break;
-            */
         case 'i':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_INFO_TABLE;
             break;
+         */
         case 'R':
         case 'r':
             RtsFlags.ProfFlags.doHeapProfile = HEAP_BY_RETAINER;

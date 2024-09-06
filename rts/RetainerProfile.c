@@ -401,8 +401,10 @@ retainRoot(void *user, StgClosure **tl)
 
     traverseMaybeInitClosureData(&g_retainerTraverseState, c);
     if (c != &stg_END_TSO_QUEUE_closure && isRetainer(c)) {
+        // XXX root should use level zero
         traversePushRoot(ts, c, c, (stackData)getRetainerFrom(c));
     } else {
+        // XXX root should use level zero
         traversePushRoot(ts, c, c, (stackData)CCS_SYSTEM);
     }
 

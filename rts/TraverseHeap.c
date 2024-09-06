@@ -7,10 +7,6 @@
  *
  * ---------------------------------------------------------------------------*/
 
-// [PORTING]
-// THIS IS IMPROPERLY PORTED
-// THIS NEEDS SEMANTIC UNDERSTANDING AND
-
 #if defined(GC_PROFILING)
 
 #include <string.h>
@@ -268,17 +264,6 @@ pushStackElement(traverseState *ts, const stackElement se)
     return ts->stackTop;
 }
 
-// [PORTING]
-// Things have been moved from TraverseHeap.c file to TraverseHeap.h file
-
-// XXX Optimize the stack usage
-typedef struct {
-  size_t total_size;
-  size_t filtered_size;
-  size_t large_size;
-  size_t small_pinned_size;
-} traversalStats;
-
 static void initTraversalStats (traversalStats *stats) {
     stats->total_size = 0;
     stats->filtered_size = 0;
@@ -330,7 +315,6 @@ static bool checkTraversalStats (traversalStats *stats) {
       stats->small_pinned_size == 0);
 }
 
-
 /**
  * Push a single closure onto the traversal work-stack.
  *
@@ -379,8 +363,10 @@ traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level,
 void
 traversePushRoot(traverseState *ts, StgClosure *c, StgClosure *cp, stackData data)
 {
-    traversePushClosure(ts, c, cp, NULL, data);
+    traversePushClosure(0, ts, c, cp, NULL, data);
 };
+
+// XXX This in fact the same as traversePushDone!
 
 /**
  * Push an empty stackElement onto the traversal work-stack for the sole purpose
@@ -409,10 +395,6 @@ traversePushReturn(traverseState *ts, StgClosure *c, stackAccum acc, stackElemen
     se.info.type = posTypeEmpty;
     return pushStackElement(ts, se);
 };
-
-// [PORTING]
-// traversePushChildren has been renamed to traverseGetChildren?
-// This needs some more scrutiny to port.
 
 /**
  * traverseGetChildren() extracts the first child of 'c' in 'first_child' and if
@@ -443,12 +425,6 @@ traverseGetChildren(StgClosure *c, StgClosure **first_child, bool *other_childre
 {
     ASSERT(get_itbl(c)->type != TSO);
     ASSERT(get_itbl(c)->type != AP_STACK);
-
-    //
-    // fill in se
-    //
-
-    se->c = c;
 
     *other_children = false;
 
@@ -695,8 +671,6 @@ popStackElement(traverseState *ts) {
     debug("stackSize = %d\n", ts->stackSize);
 }
 
-
-
 /**
  *  callReturnAndPopStackElement(): Call 'traversalState.return_cb' and remove a
  *  depleted stackElement from the top of the traversal work-stack.
@@ -908,29 +882,84 @@ static bool filterClosure (StgClosure *c, size_t size) {
  *  size to the parent's se_size.
  */
 STATIC_INLINE void
-traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data, stackElement **sep)
+traversePop(traverseState *ts, StgClosure **c, StgClosure **cp,
+      stackData *data, stackElement **sep,
+      int *cur_level, traversalStats *cur_stats)
+      )
+  /*
+traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
+    int *cur_level, traversalStats *cur_stats, stackElement **pse)
+*/
 {
     stackElement *se;
 
     debug("traversePop(): stackTop = 0x%x\n", ts->stackTop);
 
     // Is this the last internal sub-element?
-    bool last = false;
+    bool last;
 
     *c = NULL;
 
+begin:
+    last = false;
     do {
         if (isEmptyWorkStack(ts)) {
             *c = NULL;
             return;
         }
 
+        // Invariants: when we come back to the parent node from a child node
+        // we need to add the size of the child to the parent.
+        //
+        // When we start traversing a new child node, the size should be
+        // reset to 0.
+
         // Note: Below every `break`, where the loop condition is true, must be
         // accompanied by a popStackElement()/callReturnAndPopStackElement()
         // call otherwise this is an infinite loop.
         se = ts->stackTop;
 
-        *sep = se->sep;
+        // XXX In the original code this is set to se->sep
+        // *sep = se->sep;
+        *sep = se;
+
+        if (*cur_level != se->se_level) {
+          fprintf (stderr, "cur_level = %d, se_level = %d\n", *cur_level, se->se_level);
+          barf ("cur_level != se->se_level\n");
+        }
+
+        // This should be before anything else. If a stack frame is marked with
+        // se_done, we should not check any of the fields other than level and
+        // size.
+        if (se->se_done) {
+            popStackElement(ts);
+            *cur_level = *cur_level - 1 ;
+            if (*cur_level < 0) {
+              barf ("cur_level < 0\n");
+            }
+
+            StgClosure *c_untagged;
+            c_untagged = UNTAG_CLOSURE(se->c);
+            if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
+                size_t cl_size = getClosureSize(c_untagged);
+                updateTraversalStats (cur_stats, c_untagged, cl_size);
+                if (filterClosure (c_untagged, cl_size)) {
+                  cur_stats->filtered_size += cl_size;
+                }
+            }
+
+            if (cur_stats->filtered_size > 0 || se->se_subtree_stats.filtered_size > 0) {
+              printNode (true, ts, se, *cur_level,
+                    addTraversalStats(cur_stats, &se->se_subtree_stats));
+            }
+
+            // cur_stats is carried forward and aggregated in the parent
+            // This is the running total.
+            accTraversalStats (cur_stats, &se->se_parent_stats);
+
+            *c = NULL;
+            continue;
+        }
 
         // If this is a top-level element, you should pop that out.
         if (se->info.type == posTypeFresh) {
@@ -938,11 +967,38 @@ traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
             *c = se->c;
             *data = se->data;
             popStackElement(ts);
-            return;
-        } else if (se->info.type == posTypeEmpty) {
+            if (!checkTraversalStats(&se->se_parent_stats)) {
+              barf ("se_parent_stats != 0 for a fresh node");
+            }
+
+            StgClosure *c_untagged;
+            c_untagged = UNTAG_CLOSURE(*c);
+            bool first_visit = traverseIsFirstVisit(c_untagged);
+            if (first_visit) {
+              return;
+            } else {
+              // some top level weak closures get added by stable ptrs
+              // list as well as by weak ptr list.
+              /*
+              const StgInfoTable *info = get_itbl(c_untagged);
+              fprintf (stderr, "Skipping already visited: closure %p, flip %lu, level %d, type %s, desc %s\n"
+                , c_untagged
+                , flip
+                , *cur_level
+                , GET_PROF_TYPE(info)
+                , GET_PROF_DESC(info));
+              */
+              printNode (false, ts, se, *cur_level,
+                    addTraversalStats(cur_stats, &se->se_subtree_stats));
+              *c = NULL;
+              continue;
+            }
+        } /* XXX - we do this in the caller 
+        else if (se->info.type == posTypeEmpty) {
             callReturnAndPopStackElement(ts);
             continue;
         }
+        */
 
         // Note: The first ptr of all of these was already returned as
         // *fist_child in push(), so we always start with the second field.
@@ -1005,6 +1061,9 @@ traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
             entry_no = step >> 2;
             if (entry_no == ((StgTRecChunk *)se->c)->next_entry_idx) {
                 se->info.type = posTypeEmpty;
+                // XXX this is same as posTypeEmpty
+                // XXX in the old code *c = NULL here
+                se->se_done = true;
                 continue;
             }
             goto out;
@@ -1027,6 +1086,7 @@ traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
             *c = find_ptrs(&se->info);
             if (*c == NULL) {
                 se->info.type = posTypeEmpty;
+                se->se_done = true;
                 continue;
             }
             goto out;
@@ -1069,6 +1129,7 @@ traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
             *c = find_srt(&se->info);
             if(*c == NULL) {
                 se->info.type = posTypeEmpty;
+                se->se_done = true;
                 continue;
             }
             goto out;
@@ -1111,15 +1172,48 @@ out:
 
     ASSERT(*c != NULL);
 
+    /*
     *cp = se->c;
     *data = se->data;
-    *sep = se;
+    *sep = se; // XXX
 
+    // XXX ts->return_cb ??
     if(last && ts->return_cb)
         se->info.type = posTypeEmpty;
     else if(last)
         popStackElement(ts);
+     */
 
+    if(last) {
+        //popStackElement(ts);
+        se->se_done = true;
+    }
+
+    // XXX should this be done after return i.e. return_cb??
+    StgClosure *c_untagged;
+    c_untagged = UNTAG_CLOSURE(*c);
+    bool first_visit = traverseIsFirstVisit(c_untagged);
+    if (first_visit) {
+      *cp = se->c;
+      *data = se->data;
+      //*sep = se; // XXX
+
+      accTraversalStats (&se->se_parent_stats, cur_stats);
+      accTraversalStats (&se->se_subtree_stats, cur_stats);
+      initTraversalStats (cur_stats);
+    } else {
+        /*
+        const StgInfoTable *info = get_itbl(c_untagged);
+        fprintf (stderr, "already visited: closure %p, flip %lu, level %d, type %s, desc %s\n"
+          , c_untagged
+          , flip
+          , *cur_level
+          , GET_PROF_TYPE(info)
+          , GET_PROF_DESC(info));
+        */
+        printNode (false, ts, se, *cur_level, addTraversalStats(cur_stats, &se->se_subtree_stats));
+        goto begin;
+    }
     return;
 
 }
@@ -1155,7 +1249,7 @@ traverseIsFirstVisit(StgClosure *c)
  * Call traversePushClosure for each of the closures covered by a large bitmap.
  */
 static void
-traverseLargeBitmap(traverseState *ts, StgPtr p, StgLargeBitmap *large_bitmap,
+traverseLargeBitmap(int level, traverseState *ts, StgPtr p, StgLargeBitmap *large_bitmap,
     uint32_t size, StgClosure *c, stackElement *sep, stackData data)
 {
     uint32_t i, b;
@@ -1165,7 +1259,7 @@ traverseLargeBitmap(traverseState *ts, StgPtr p, StgLargeBitmap *large_bitmap,
     bitmap = large_bitmap->bitmap[b];
     for (i = 0; i < size; ) {
         if ((bitmap & 1) == 0) {
-            traversePushClosure(level, ts, (StgClosure *)*p, c, data);
+            traversePushClosure(level, ts, (StgClosure *)*p, c, sep, data);
         }
         i++;
         p++;
@@ -1184,7 +1278,7 @@ traverseSmallBitmap (int level, traverseState *ts, StgPtr p, uint32_t size, StgW
 {
     while (size > 0) {
         if ((bitmap & 1) == 0) {
-            traversePushClosure(level, ts, (StgClosure *)*p, c, data);
+            traversePushClosure(level, ts, (StgClosure *)*p, c, sep, data);
         }
         p++;
         bitmap = bitmap >> 1;
@@ -1219,7 +1313,7 @@ traverseSmallBitmap (int level, traverseState *ts, StgPtr p, uint32_t size, StgW
  *    traversePushClosure() is invoked instead of evacuate().
  */
 static void
-traversePushStack(traverseState *ts, StgClosure *cp, stackElement *sep,
+traversePushStack(int level, traverseState *ts, StgClosure *cp, stackElement *sep,
                   stackData data, StgPtr stackStart, StgPtr stackEnd)
 {
     StgPtr p;
@@ -1236,7 +1330,7 @@ traversePushStack(traverseState *ts, StgClosure *cp, stackElement *sep,
         switch(info->i.type) {
 
         case UPDATE_FRAME:
-            traversePushClosure(ts, ((StgUpdateFrame *)p)->updatee, cp, sep, data);
+            traversePushClosure(level, ts, ((StgUpdateFrame *)p)->updatee, cp, sep, data);
             p += sizeofW(StgUpdateFrame);
             continue;
 
@@ -1250,11 +1344,11 @@ traversePushStack(traverseState *ts, StgClosure *cp, stackElement *sep,
             bitmap = BITMAP_BITS(info->i.layout.bitmap);
             size   = BITMAP_SIZE(info->i.layout.bitmap);
             p++;
-            p = traverseSmallBitmap(ts, p, size, bitmap, cp, sep, data);
+            p = traverseSmallBitmap(level, ts, p, size, bitmap, cp, sep, data);
 
         follow_srt:
             if (info->i.srt) {
-                traversePushClosure(ts, GET_SRT(info), cp, sep, data);
+                traversePushClosure(level, ts, GET_SRT(info), cp, sep, data);
             }
             continue;
 
@@ -1262,11 +1356,11 @@ traversePushStack(traverseState *ts, StgClosure *cp, stackElement *sep,
             StgBCO *bco;
 
             p++;
-            traversePushClosure(ts, (StgClosure*)*p, cp, sep, data);
+            traversePushClosure(level, ts, (StgClosure*)*p, cp, sep, data);
             bco = (StgBCO *)*p;
             p++;
             size = BCO_BITMAP_SIZE(bco);
-            traverseLargeBitmap(ts, p, BCO_BITMAP(bco), size, cp, sep, data);
+            traverseLargeBitmap(level, ts, p, BCO_BITMAP(bco), size, cp, sep, data);
             p += size;
             continue;
         }
@@ -1275,7 +1369,7 @@ traversePushStack(traverseState *ts, StgClosure *cp, stackElement *sep,
         case RET_BIG:
             size = GET_LARGE_BITMAP(&info->i)->size;
             p++;
-            traverseLargeBitmap(ts, p, GET_LARGE_BITMAP(&info->i),
+            traverseLargeBitmap(level, ts, p, GET_LARGE_BITMAP(&info->i),
                                 size, cp, sep, data);
             p += size;
             // and don't forget to follow the SRT
@@ -1285,7 +1379,7 @@ traversePushStack(traverseState *ts, StgClosure *cp, stackElement *sep,
             StgRetFun *ret_fun = (StgRetFun *)p;
             const StgFunInfoTable *fun_info;
 
-            traversePushClosure(ts, ret_fun->fun, cp, sep, data);
+            traversePushClosure(level, ts, ret_fun->fun, cp, sep, data);
             fun_info = get_fun_itbl(UNTAG_CONST_CLOSURE(ret_fun->fun));
 
             p = (P_)&ret_fun->payload;
@@ -1293,18 +1387,18 @@ traversePushStack(traverseState *ts, StgClosure *cp, stackElement *sep,
             case ARG_GEN:
                 bitmap = BITMAP_BITS(fun_info->f.b.bitmap);
                 size = BITMAP_SIZE(fun_info->f.b.bitmap);
-                p = traverseSmallBitmap(ts, p, size, bitmap, cp, sep, data);
+                p = traverseSmallBitmap(level, ts, p, size, bitmap, cp, sep, data);
                 break;
             case ARG_GEN_BIG:
                 size = GET_FUN_LARGE_BITMAP(fun_info)->size;
-                traverseLargeBitmap(ts, p, GET_FUN_LARGE_BITMAP(fun_info),
+                traverseLargeBitmap(level, ts, p, GET_FUN_LARGE_BITMAP(fun_info),
                                     size, cp, sep, data);
                 p += size;
                 break;
             default:
                 bitmap = BITMAP_BITS(stg_arg_bitmaps[fun_info->f.fun_type]);
                 size = BITMAP_SIZE(stg_arg_bitmaps[fun_info->f.fun_type]);
-                p = traverseSmallBitmap(ts, p, size, bitmap, cp, sep, data);
+                p = traverseSmallBitmap(level, ts, p, size, bitmap, cp, sep, data);
                 break;
             }
             goto follow_srt;
@@ -1321,7 +1415,7 @@ traversePushStack(traverseState *ts, StgClosure *cp, stackElement *sep,
  * Call traversePushClosure for each of the children of a PAP/AP
  */
 STATIC_INLINE StgPtr
-traversePAP (traverseState *ts,
+traversePAP (int level, traverseState *ts,
                     StgClosure *pap,    /* NOT tagged */
                     stackElement *sep,
                     stackData data,
@@ -1332,7 +1426,7 @@ traversePAP (traverseState *ts,
     StgWord bitmap;
     const StgFunInfoTable *fun_info;
 
-    traversePushClosure(ts, fun, pap, sep, data);
+    traversePushClosure(level, ts, fun, pap, sep, data);
     fun = UNTAG_CLOSURE(fun);
     fun_info = get_fun_itbl(fun);
     ASSERT(fun_info->i.type != PAP);
@@ -1342,33 +1436,39 @@ traversePAP (traverseState *ts,
     switch (fun_info->f.fun_type) {
     case ARG_GEN:
         bitmap = BITMAP_BITS(fun_info->f.b.bitmap);
-        p = traverseSmallBitmap(ts, p, n_args, bitmap,
+        p = traverseSmallBitmap(level, ts, p, n_args, bitmap,
                                 pap, sep, data);
         break;
     case ARG_GEN_BIG:
-        traverseLargeBitmap(ts, p, GET_FUN_LARGE_BITMAP(fun_info),
+        traverseLargeBitmap(level, ts, p, GET_FUN_LARGE_BITMAP(fun_info),
                             n_args, pap, sep, data);
         p += n_args;
         break;
     case ARG_BCO:
-        traverseLargeBitmap(ts, (StgPtr)payload, BCO_BITMAP(fun),
+        traverseLargeBitmap(level, ts, (StgPtr)payload, BCO_BITMAP(fun),
                             n_args, pap, sep, data);
         p += n_args;
         break;
     default:
         bitmap = BITMAP_BITS(stg_arg_bitmaps[fun_info->f.fun_type]);
-        p = traverseSmallBitmap(ts, p, n_args, bitmap, pap, sep, data);
+        p = traverseSmallBitmap(level, ts, p, n_args, bitmap, pap, sep, data);
         break;
     }
     return p;
 }
 
+extern uint32_t numObjectVisited;
+extern uint32_t timesAnyObjectVisited;
+
 static void
-resetMutableObjects(traverseState* ts)
+resetMutableObjects(int cur_level, traverseState *ts, traversalStats *cur_stats, W_ *mut_words)
 {
     uint32_t g, n;
     bdescr *bd;
     StgPtr ml;
+    char spaces[MAX_SPACES];
+
+    fillSpaces(spaces, cur_level);
 
     // The following code resets the 'trav' field of each unvisited mutable
     // object.
@@ -1382,7 +1482,7 @@ resetMutableObjects(traverseState* ts)
         for (n = 0; n < getNumCapabilities(); n++) {
           for (bd = capabilities[n]->mut_lists[g]; bd != NULL; bd = bd->link) {
             for (ml = bd->start; ml < bd->free; ml++) {
-                bool first_visit = traverseMaybeInitClosureData((StgClosure *)*ml);
+                bool first_visit = traverseMaybeInitClosureData(ts, (StgClosure *)*ml);
                 timesAnyObjectVisited++;
                 // Account the pointer word
                 (*mut_words)++;
@@ -1541,6 +1641,72 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     StgWord typeOfc;
     stackElement *sep;
     bool other_children;
+    int cur_level = 0;
+    traversalStats cur_stats;
+    // XXX these can overflow, we should reset them every time.
+    uint32_t any = timesAnyObjectVisited;
+    uint32_t total = numObjectVisited;
+    // We increment the stats before heap traversal.
+    uint64_t curGc = (uint64_t) getNumGcs() - 1;
+    stackElement *se;
+    bool verbose = isReportVerbose;
+
+    initTraversalStats (&cur_stats);
+
+    // XXX is flip present in the new code?
+
+    // XXX This should be checked by the CLI
+    if (gcDiffNewest > gcDiffOldest) {
+      gcDiffNewest = gcDiffOldest;
+    }
+    // XXX Using the profiling header moves the perfectly aligned page size
+    // allocations by a few bytes, thus increasing the slop significantly. To
+    // avoid that we can use a per megablock bitmap to keep track of the
+    // traversed closures in a non-profiling build. Or we can reserve 32-bytes
+    // per 4K block in the block descriptor for that purpose, though this could
+    // be more expensive to set on allocations, but we can clear it cheaply at
+    // the end of traversal, by just walking all the used blocks.
+    //
+    // XXX record the thread-id of allocator along with gc-id
+    // XXX Filter based on thread-id
+    //
+    // if we are reporting heap profile the GC is forced to be a major
+    // GC.
+    if(curGc >= gcDiffOldest) {
+      fprintf ( hp_file
+              , "state: "
+                "report %s, dNewest %lu, dOldest %lu, aOldest %lu, "
+                "verbose %s, fineGrainedPinnedReporting %s\n"
+              , stringifyReportType(report), gcDiffNewest
+              , gcDiffOldest, gcAbsOldest
+              , verbose ? "true" : "false"
+              , enable_fine_grained_pinned ? "true" : "false");
+
+      uint64_t window_lower;
+      uint64_t window_upper = curGc - gcDiffNewest;
+      if (report == GC_SINCE) {
+          window_lower = gcAbsOldest;
+      } else {
+          window_lower = curGc - gcDiffOldest;
+      }
+      fprintf (hp_file, "gcids: current {%lu}, window [%lu, %lu]\n"
+            , curGc, window_lower, window_upper);
+
+    } else {
+      fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
+    }
+    fprintf(hp_file, "---------Process memory-----------\n");
+    getMemMaps(verbose, 256);
+    if (verbose) {
+        getMemUsage();
+    }
+    gcStats gcstats = getGCStats(verbose, enable_fine_grained_pinned);
+    fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
+    fprintf (hp_file, "flip: {%lu}\n" , flip);
+    /*
+    fprintf (hp_file, "Haskell heap base address: {%lx}\n"
+          , mblock_address_space.begin);
+    */
 
     // c = Current closure                           (possibly tagged)
     // cp = Current closure's Parent                 (NOT tagged)
@@ -1548,15 +1714,67 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     // child_data = data to associate with current closure's children
 
 loop:
-    traversePop(ts, &c, &cp, &data, &sep);
+    // XXX sep has different meaning for us
+    traversePop(ts, &c, &cp, &data, &sep, &cur_level, &cur_stats);
 
     if (c == NULL) {
+        W_ mut_words = 0;
+
         debug("maxStackSize= %d\n", ts->maxStackSize);
+        // XXX resetMutableObjects(cur_level, &cur_stats, &mut_words);
+
+        fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
+        fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
+        fprintf (hp_file, "filtered bytes: %lu (%lu words)\n"
+              , cur_stats.filtered_size * sizeof(W_), cur_stats.filtered_size);
+
+        fprintf(hp_file, "---------Real Usage/Used block space-----------\n");
+        reportWithUtilWords ("live bytes"
+              , gcstats.live_words, cur_stats.total_size + mut_words);
+        W_ pinned_size = cur_stats.large_size + cur_stats.small_pinned_size;
+        W_ unpinned_size = cur_stats.total_size - pinned_size;
+        reportWithUtilWords (" movable"
+              , gcstats.regular_words, unpinned_size);
+        // XXX There will be some loss due to alignment of pinned
+        // data in both large and small allocations (aligned
+        // arrays). However, the significant loss is because of dead
+        // pinned objects.
+        reportWithUtilWords (" pinned"
+              , gcstats.large_words
+              , pinned_size);
+        if (enable_fine_grained_pinned) {
+          reportWithUtilWords ("  large"
+                , gcstats.large_pinned_words
+                , cur_stats.large_size);
+          reportWithUtilWords ("  small"
+                , gcstats.small_pinned_words
+                , cur_stats.small_pinned_size);
+        }
+        reportWithUtilWords (" mut_lists"
+        // XXX get it from gcstats?
+              , mut_words
+              , mut_words);
+
+        if (verbose) {
+          liveDiff(cur_stats.total_size * sizeof(W_));
+        }
+        if (cur_level != 0) {
+          barf("Traversal loop ended at cur_level: %d\n", cur_level);
+        }
         return;
     }
 
 inner_loop:
     c = UNTAG_CLOSURE(c);
+
+    // Some closures are added twice on the stack by the initialization code
+    // itself.  So we need to take care of that here.
+    if ((char *)c >= (char *)mblock_address_space.begin) {
+      if (traverseIsFirstVisit(c) == 0) {
+        printNode (false, ts, se, cur_level, addTraversalStats(&cur_stats, &se->se_subtree_stats));
+        goto loop;
+      }
+    }
 
     typeOfc = get_itbl(c)->type;
 
@@ -1571,9 +1789,19 @@ inner_loop:
         break;
 
     case IND_STATIC:
+        cur_level = cur_level + 1;
+        traversePushDone(c, NULL, child_data, cur_level, cur_stats, ts);
+        initTraversalStats (&cur_stats);
+
         // We just skip IND_STATIC, so it's never visited.
         c = ((StgIndStatic *)c)->indirectee;
-        goto inner_loop;
+        bool first_visit1 = traverseIsFirstVisit(UNTAG_CLOSURE(c));
+        if (first_visit1) {
+          goto inner_loop;
+        } else {
+          printNode (false, ts, se, cur_level, addTraversalStats(&cur_stats, &se->se_subtree_stats));
+          goto loop;
+        }
 
     case CONSTR_NOCAF:
         // static objects with no pointers out, so goto loop.
@@ -1630,12 +1858,18 @@ inner_loop:
 
     // If this is the first visit to c, initialize its data.
     bool first_visit = traverseMaybeInitClosureData(ts, c);
+
+    // XXX this code has changed
     bool traverse_children = first_visit;
     if(visit_cb)
         traverse_children = visit_cb(c, cp, data, first_visit,
                                      &accum, &child_data);
-    if(!traverse_children)
+    cur_level = cur_level + 1;
+    traversePushDone (c, cp, child_data, cur_level, cur_stats, ts);
+    initTraversalStats (&cur_stats);
+    if(!traverse_children) {
         goto loop;
+    }
 
     // process child
 
@@ -1644,8 +1878,11 @@ inner_loop:
     // would be hard.
     switch (typeOfc) {
     case STACK:
+        // XXX ensure there is at least one actual frame between stackStart and
+        // stackEnd.
+        // XXX pusreturn has been added in the new code
         sep = traversePushReturn(ts, c, accum, sep);
-        traversePushStack(ts, c, sep, child_data,
+        traversePushStack(cur_level, ts, c, sep, child_data,
                     ((StgStack *)c)->sp,
                     ((StgStack *)c)->stack + ((StgStack *)c)->stack_size);
         goto loop;
@@ -1656,16 +1893,16 @@ inner_loop:
 
         sep = traversePushReturn(ts, c, accum, sep);
 
-        traversePushClosure(ts, (StgClosure *) tso->stackobj, c, sep, child_data);
-        traversePushClosure(ts, (StgClosure *) tso->blocked_exceptions, c, sep, child_data);
-        traversePushClosure(ts, (StgClosure *) tso->bq, c, sep, child_data);
-        traversePushClosure(ts, (StgClosure *) tso->trec, c, sep, child_data);
+        traversePushClosure(cur_level, ts, (StgClosure *) tso->stackobj, c, sep, child_data);
+        traversePushClosure(cur_level, ts, (StgClosure *) tso->blocked_exceptions, c, sep, child_data);
+        traversePushClosure(cur_level, ts, (StgClosure *) tso->bq, c, sep, child_data);
+        traversePushClosure(cur_level, ts, (StgClosure *) tso->trec, c, sep, child_data);
         if (   tso->why_blocked == BlockedOnMVar
                || tso->why_blocked == BlockedOnMVarRead
                || tso->why_blocked == BlockedOnBlackHole
                || tso->why_blocked == BlockedOnMsgThrowTo
             ) {
-            traversePushClosure(ts, tso->block_info.closure, c, sep, child_data);
+            traversePushClosure(cur_level, ts, tso->block_info.closure, c, sep, child_data);
         }
         goto loop;
     }
@@ -1676,9 +1913,9 @@ inner_loop:
 
         sep = traversePushReturn(ts, c, accum, sep);
 
-        traversePushClosure(ts, (StgClosure *) bq->link, c, sep, child_data);
-        traversePushClosure(ts, (StgClosure *) bq->bh, c, sep, child_data);
-        traversePushClosure(ts, (StgClosure *) bq->owner, c, sep, child_data);
+        traversePushClosure(cur_level, ts, (StgClosure *) bq->link, c, sep, child_data);
+        traversePushClosure(cur_level, ts, (StgClosure *) bq->bh, c, sep, child_data);
+        traversePushClosure(cur_level, ts, (StgClosure *) bq->owner, c, sep, child_data);
         goto loop;
     }
 
@@ -1688,7 +1925,7 @@ inner_loop:
 
         sep = traversePushReturn(ts, c, accum, sep);
 
-        traversePAP(ts, c, sep, child_data, pap->fun, pap->payload, pap->n_args);
+        traversePAP(cur_level, ts, c, sep, child_data, pap->fun, pap->payload, pap->n_args);
         goto loop;
     }
 
@@ -1698,23 +1935,34 @@ inner_loop:
 
         sep = traversePushReturn(ts, c, accum, sep);
 
-        traversePAP(ts, c, sep, child_data, ap->fun, ap->payload, ap->n_args);
+        traversePAP(cur_level, ts, c, sep, child_data, ap->fun, ap->payload, ap->n_args);
         goto loop;
     }
 
     case AP_STACK:
         sep = traversePushReturn(ts, c, accum, sep);
 
-        traversePushClosure(ts, ((StgAP_STACK *)c)->fun, c, sep, child_data);
-        traversePushStack(ts, c, sep, child_data,
+        traversePushClosure(cur_level, ts, ((StgAP_STACK *)c)->fun, c, sep, child_data);
+        traversePushStack(cur_level, ts, c, sep, child_data,
                     (StgPtr)((StgAP_STACK *)c)->payload,
                     (StgPtr)((StgAP_STACK *)c)->payload +
                              ((StgAP_STACK *)c)->size);
         goto loop;
     }
 
-    stackElement se;
-    traverseGetChildren(c, &first_child, &other_children, &se);
+    ts->stackTop->se_done = true; // XXX means false, because of inversion
+                                  // below
+    stackElement *se = ts->stackTop;
+    traverseGetChildren(c, &first_child, &se->se_done, ts->stackTop);
+
+    // XXX the meaning is inverted
+    se->se_done = !se->se_done;
+
+    if (first_child == NULL) {
+        ts->stackTop->se_done = true;
+    }
+
+    // XXX Need to review this 
 
     // If first_child is null, c has no child.
     // If first_child is not null, the top stack element points to the next
@@ -1746,6 +1994,7 @@ inner_loop:
         sep = pushStackElement(ts, se);
     }
 
+    // We have already pushed the stack entry in traversePushChildren
     // (c, cp, data) = (first_child, c, child_data)
     data = child_data;
     cp = c;

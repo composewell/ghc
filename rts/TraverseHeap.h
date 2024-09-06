@@ -94,6 +94,14 @@ typedef union stackAccum_ {
     StgWord subtree_sizeW;
 } stackAccum;
 
+// XXX Optimize the stack usage
+typedef struct {
+  size_t total_size;
+  size_t filtered_size;
+  size_t large_size;
+  size_t small_pinned_size;
+} traversalStats;
+
 // [PORTING]
 // New fields have been added to stackElement_
 
@@ -111,8 +119,11 @@ typedef union stackAccum_ {
 typedef struct stackElement_ {
     stackPos info;
     StgClosure *c;
+    // XXX We could use this for parent stats.
     struct stackElement_ *sep; // stackElement of parent closure
     stackData data;
+
+    // XXX Can use this?
     stackAccum accum;
     // We traverse all the children of a node before we print the node. We do
     // this so that we can decide to print or not print the node based on

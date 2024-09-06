@@ -173,7 +173,7 @@ wayOptc platform WayThreaded = case platformOS platform of
                                _         -> []
 wayOptc _ WayDebug      = []
 wayOptc _ WayDyn        = []
-wayOptc _ WayProf       = ["-DPROFILING"]
+wayOptc _ WayProf       = ["-DGC_PROFILING"]
 wayOptc _ WayTracing    = ["-DTRACING"]
 
 -- | Pass these options to linker when enabling this way

@@ -45,6 +45,8 @@ import CLOSURE CCS_MAIN;
 // See how the code has changed and adapt accordingly
 // We need to add SET_GC_ID(mba); in proper places
 
+// XXX Check any new SET_HDR* calls
+
 // For setting ccs we need to look for all places where the following macros
 // are called:
 // SET_HDR, SET_HDR_RELEASE, SET_ARR_HDR, OVERWRITE_INFO
@@ -195,6 +197,8 @@ stg_shrinkMutableByteArrayzh ( gcptr mba, W_ new_size )
                                      ROUNDUP_BYTES_TO_WDS(new_size)));
    StgArrBytes_bytes(mba) = new_size;
    // No need to call LDV_RECORD_CREATE. See Note [LDV profiling and resizing arrays]
+   // XXX Do we need this?
+   SET_GC_ID(mba);
 
    return ();
 }
@@ -219,6 +223,8 @@ stg_resizzeMutableByteArrayzh ( gcptr mba, W_ new_size )
                                         new_size_wds));
       StgArrBytes_bytes(mba) = new_size;
       // No need to call LDV_RECORD_CREATE. See Note [LDV profiling and resizing arrays]
+      // XXX ?
+      SET_GC_ID(mba);
 
       return (mba);
    } else {
@@ -263,6 +269,8 @@ again:
                                      new_size));
    StgSmallMutArrPtrs_ptrs(mba) = new_size;
    // No need to call LDV_RECORD_CREATE. See Note [LDV profiling and resizing arrays]
+   // XXX ?
+   SET_GC_ID(mba);
 
    return ();
 }
@@ -897,6 +905,8 @@ stg_finalizzeWeakzh ( gcptr w )
     unlockClosure(w, stg_DEAD_WEAK_info);
 
     LDV_RECORD_CREATE(w);
+    // XXX ?
+    SET_GC_ID(w);
 
     if (list != stg_NO_FINALIZER_closure) {
       ccall runCFinalizers(list);

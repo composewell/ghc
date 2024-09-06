@@ -215,10 +215,10 @@ closureIdentity( const StgClosure *p
             return closure_type_names[info->type];
         }
     }
-    */
     case HEAP_BY_INFO_TABLE: {
         return get_itbl(p);
         }
+    */
     default:
         barf("closureIdentity");
     }
@@ -562,10 +562,9 @@ endHeapProfiling(void)
         return;
     }
 
-    set_prof_locale();
-
 // [PORTING]
 // Here, the set_prof_locale() is additional and does not exist in 8.10
+    set_prof_locale();
 
 #if defined(GC_PROFILING)
     if (doingRetainerProfiling()) {
@@ -620,7 +619,6 @@ buf_append(char *p, const char *q, char *end)
     }
     return m;
 }
-*/
 
 static void
 fprint_ccs(FILE *fp, CostCentreStack *ccs, uint32_t max_length)
@@ -661,6 +659,9 @@ fprint_ccs(FILE *fp, CostCentreStack *ccs, uint32_t max_length)
     }
     fprintf(fp, "%s", buf);
 }
+*/
+
+// PORTING: this code has changed.
 
 bool
 strMatchesSelector( const char* str, const char* sel )
@@ -936,6 +937,8 @@ dumpCensus( Census *census )
         if (count == 0) continue;
 
         switch (RtsFlags.ProfFlags.doHeapProfile) {
+        // [PORTING]
+        // Here HEAP_BY_INFO_TABLE is additional
         /*
         case HEAP_BY_CLOSURE_TYPE:
             fprintf(hp_file, "%s", (char *)ctr->identity);
@@ -949,8 +952,6 @@ dumpCensus( Census *census )
             traceHeapProfSampleString(0, str, count * sizeof(W_));
             break;
         */
-        // [PORTING]
-        // Here HEAP_BY_INFO_TABLE is additional
 #if defined(GC_PROFILING)
         /*
         case HEAP_BY_CCS:

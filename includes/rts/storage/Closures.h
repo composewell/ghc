@@ -18,6 +18,9 @@
    -------------------------------------------------------------------------- */
 
 typedef struct {
+  // We are using the ccs field to hold the gc-id
+  // XXX Both the trav and gc-id field can be combined into one to save memory
+  // and memory access overhead per closure.
   CostCentreStack *ccs;
   union {
     StgWord trav;             /* Heap traversal */

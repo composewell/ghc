@@ -959,8 +959,18 @@ GarbageCollect (uint32_t collect_gen,
   // be *after* the major GC; it's now running concurrently.
   IF_DEBUG(sanity, checkSanity(true /* after GC */, major_gc && !RtsFlags.GcFlags.useNonmoving));
 
-// [PORTING]
-// Does the TICKY_TICKY below need to be removed?
+  // If a heap census is due, we need to do it before
+  // resurrectThreads(), for the same reason as checkSanity above:
+  // resurrectThreads() will overwrite some closures and leave slop
+  // behind.
+  /* Moved down below.
+  if (do_heap_census) {
+      debugTrace(DEBUG_sched, "performing heap census");
+      RELEASE_SM_LOCK;
+      heapCensus(mut_time);
+      ACQUIRE_SM_LOCK;
+  }
+  */
 
 #if defined(TICKY_TICKY)
   // Post ticky counter sample.
@@ -971,6 +981,13 @@ GarbageCollect (uint32_t collect_gen,
       performTickySample = false;
   }
 #endif
+
+  /* Moved down below
+  // send exceptions to any threads which were about to die
+  RELEASE_SM_LOCK;
+  resurrectThreads(resurrected_threads);
+  ACQUIRE_SM_LOCK;
+  */
 
   if (major_gc) {
       W_ need_prealloc, need_live, need, got;
@@ -1050,8 +1067,7 @@ GarbageCollect (uint32_t collect_gen,
              live_blocks * BLOCK_SIZE_W - live_words /* slop */,
              N, n_gc_threads, gc_threads,
              par_max_copied, par_balanced_copied,
-             gc_spin_spin, gc_spin_yield, mut_spin_spin, mut_spin_yield,
-             any_work, no_work, scav_find_work);
+             any_work, scav_find_work, max_n_todo_overflow);
 
   // mem-x-ray depends on the updated gc stats. So heap census must be done
   // after stat updation.
@@ -1087,6 +1103,16 @@ GarbageCollect (uint32_t collect_gen,
   // check for memory leaks if DEBUG is on
   memInventory(DEBUG_gc);
 #endif
+
+  /* Moved up above
+  // ok, GC over: tell the stats department what happened.
+  stat_endGCWorker(cap, gct);
+  stat_endGC(cap, gct, live_words, copied,
+             live_blocks * BLOCK_SIZE_W - live_words /* slop */,
+             N, n_gc_threads, gc_threads,
+             par_max_copied, par_balanced_copied,
+             any_work, scav_find_work, max_n_todo_overflow);
+   */
 
 #if defined(RTS_USER_SIGNALS)
   if (RtsFlags.MiscFlags.install_signal_handlers) {

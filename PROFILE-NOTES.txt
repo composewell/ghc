@@ -1,0 +1,9 @@
+# ghc 9.0.2 has some linking issue
+ghcup install ghc 9.0.1
+cabal install happy-1.20.1.1
+./boot
+./configure
+./hadrian/build --flavour=quick
+./hadrian/build --flavour=quick --freeze1
+_build/stage1/bin/ghc -prof -ddump-cmm -ddump-to-file -rtsopts -fforce-recomp ./fib.hs
+./fib +RTS -i0 -hr -s
