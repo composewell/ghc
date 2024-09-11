@@ -142,6 +142,8 @@ typedef struct stackElement_ {
     bool se_done;
 } stackElement;
 
+StgWord flip;
+
 typedef struct traverseState_ {
     /** Note [Profiling heap traversal visited bit]
      * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -177,7 +179,7 @@ typedef struct traverseState_ {
      * the bit manually. See 'resetStaticObjectForProfiling' and
      * 'resetMutableObjects'.
      */
-    StgWord flip;
+    //StgWord flip;
 
     /**
      * Invariants:
@@ -273,7 +275,8 @@ bool isTravDataValid(const traverseState *ts, const StgClosure *c);
 
 void traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb);
 void traversePushRoot(traverseState *ts, StgClosure *c, StgClosure *cp, stackData data);
-void traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp, stackData data);
+void traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp,
+      stackElement *sep, stackData data);
 bool traverseMaybeInitClosureData(const traverseState* ts, StgClosure *c);
 void traverseInvalidateClosureData(traverseState* ts);
 

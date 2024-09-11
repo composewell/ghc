@@ -569,7 +569,9 @@ endHeapProfiling(void)
 #if defined(GC_PROFILING)
     if (doingRetainerProfiling()) {
         endRetainerProfiling();
-    } else if (doingLDVProfiling()) {
+    }
+    /*
+    else if (doingLDVProfiling()) {
         uint32_t t;
         LdvCensusKillAll();
         aggregateCensusInfo();
@@ -584,7 +586,7 @@ endHeapProfiling(void)
         } else {
             freeEra( &censuses[era] );
         }
-    } else {
+    } */ else {
         freeEra( &censuses[0] );
     }
 #else

@@ -10,6 +10,7 @@ module GHC.Exts.Heap.ProfInfo.PeekProfInfo_ProfilingEnabled(
 
 -- See [hsc and CPP workaround]
 
+#define GC_PROFILING
 #define PROFILING
 
 #include "Rts.h"

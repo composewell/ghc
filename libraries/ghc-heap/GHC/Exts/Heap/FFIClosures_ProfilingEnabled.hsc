@@ -6,6 +6,7 @@ module GHC.Exts.Heap.FFIClosures_ProfilingEnabled where
 -- See [hsc and CPP workaround]
 
 #define PROFILING
+#define GC_PROFILING
 #include "Rts.h"
 
 import Prelude

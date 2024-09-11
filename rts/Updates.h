@@ -40,11 +40,13 @@
                  p_ updatee
 
 // XXX Use this in updateWithIndirection CMM version
+#if 0
 #ifdef GC_PROFILING
 #define SET_GC_ID(c) \
     StgHeader_ccs(c) = 0;
 #else
 #define SET_GC_ID(c)
+#endif
 #endif
 
 // XXX Use this in updateWithIndirection CMM version
@@ -84,11 +86,13 @@
 
 #else /* !CMINUSMINUS */
 
+#if 0
 #ifdef GC_PROFILING
 #define SET_GC_ID(c) \
     (((StgClosure *)(c))->header.prof.ccs) = 0;
 #else
 #define SET_GC_ID(c)
+#endif
 #endif
 
 INLINE_HEADER void updateWithIndirection (Capability *cap,

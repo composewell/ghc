@@ -28,12 +28,12 @@ StgWord getTravData(const StgClosure *c)
 
 void setTravData(const traverseState *ts, StgClosure *c, StgWord w)
 {
-    c->header.prof.hp.trav = w | ts->flip;
+    c->header.prof.hp.trav = w | flip;
 }
 
 bool isTravDataValid(const traverseState *ts, const StgClosure *c)
 {
-    return (c->header.prof.hp.trav & 1) == ts->flip;
+    return (c->header.prof.hp.trav & 1) == flip;
 }
 
 #if defined(DEBUG)
@@ -323,7 +323,8 @@ static bool checkTraversalStats (traversalStats *stats) {
  *  data - data associated with closure.
  */
 inline void
-traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp, stackData data) {
+traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp, 
+      stackElement *sep, stackData data) {
     stackElement se;
 
     se.c = c;
@@ -349,7 +350,9 @@ traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level,
 
     se.c = c;
     se.info.next.cp = cp;
+    se.sep = NULL; // XXX
     se.data = data;
+    se.accum = (stackAccum)(StgWord)0;
     se.info.type = 0; // XXX ?
     se.se_level = level;
     se.se_done = true;
@@ -378,6 +381,7 @@ traversePushRoot(traverseState *ts, StgClosure *c, StgClosure *cp, stackData dat
  *
  * When return_cb is NULL this function does nothing.
  */
+#if 0
 STATIC_INLINE stackElement *
 traversePushReturn(traverseState *ts, StgClosure *c, stackAccum acc, stackElement *sep)
 {
@@ -395,6 +399,7 @@ traversePushReturn(traverseState *ts, StgClosure *c, stackAccum acc, stackElemen
     se.info.type = posTypeEmpty;
     return pushStackElement(ts, se);
 };
+#endif
 
 /**
  * traverseGetChildren() extracts the first child of 'c' in 'first_child' and if
@@ -679,6 +684,7 @@ popStackElement(traverseState *ts) {
  *    stackTop cannot be equal to stackLimit unless the whole stack is
  *    empty, in which case popStackElement() is not allowed.
  */
+#if 0
 static void
 callReturnAndPopStackElement(traverseState *ts)
 {
@@ -690,6 +696,7 @@ callReturnAndPopStackElement(traverseState *ts)
 
     popStackElement(ts);
 }
+#endif
 
 extern FILE *hp_file;
 extern size_t getClosureSize(const StgClosure *p);
@@ -785,8 +792,6 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se,
     return;
 }
 
-bool traverseIsFirstVisit(StgClosure *c);
-
 // XXX Frequency of doing the profile should be related to the window size.
 // Such that we are checking a window of particular size and in the next check
 // we slide past that.
@@ -853,6 +858,16 @@ static bool filterClosure (StgClosure *c, size_t size) {
     return true;
 }
 
+static bool
+traverseIsFirstVisit(const traverseState *ts, StgClosure *c)
+{
+  // isTravDataValid means trav bit is same as flip bit.
+    if (!isTravDataValid(ts, c)) {
+        return true;
+    }
+    return false;
+}
+
 // [PORTING]
 // traversePop signature has changed. Will require some effort to port.
 
@@ -885,11 +900,6 @@ STATIC_INLINE void
 traversePop(traverseState *ts, StgClosure **c, StgClosure **cp,
       stackData *data, stackElement **sep,
       int *cur_level, traversalStats *cur_stats)
-      )
-  /*
-traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
-    int *cur_level, traversalStats *cur_stats, stackElement **pse)
-*/
 {
     stackElement *se;
 
@@ -973,7 +983,7 @@ begin:
 
             StgClosure *c_untagged;
             c_untagged = UNTAG_CLOSURE(*c);
-            bool first_visit = traverseIsFirstVisit(c_untagged);
+            bool first_visit = traverseIsFirstVisit(ts, c_untagged);
             if (first_visit) {
               return;
             } else {
@@ -1192,7 +1202,7 @@ out:
     // XXX should this be done after return i.e. return_cb??
     StgClosure *c_untagged;
     c_untagged = UNTAG_CLOSURE(*c);
-    bool first_visit = traverseIsFirstVisit(c_untagged);
+    bool first_visit = traverseIsFirstVisit(ts, c_untagged);
     if (first_visit) {
       *cp = se->c;
       *data = se->data;
@@ -1233,17 +1243,6 @@ traverseMaybeInitClosureData(const traverseState* ts, StgClosure *c)
     }
     return false;
 }
-
-bool
-traverseIsFirstVisit(StgClosure *c)
-{
-  // isTravDataValid means trav bit is same as flip bit.
-    if (!isTravDataValid(c)) {
-        return true;
-    }
-    return false;
-}
-
 
 /**
  * Call traversePushClosure for each of the closures covered by a large bitmap.
@@ -1640,7 +1639,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     stackData data, child_data;
     StgWord typeOfc;
     stackElement *sep;
-    bool other_children;
+    //bool other_children;
     int cur_level = 0;
     traversalStats cur_stats;
     // XXX these can overflow, we should reset them every time.
@@ -1648,12 +1647,11 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     uint32_t total = numObjectVisited;
     // We increment the stats before heap traversal.
     uint64_t curGc = (uint64_t) getNumGcs() - 1;
-    stackElement *se;
+    // XXX is this same as sep?
+    // stackElement *se;
     bool verbose = isReportVerbose;
 
     initTraversalStats (&cur_stats);
-
-    // XXX is flip present in the new code?
 
     // XXX This should be checked by the CLI
     if (gcDiffNewest > gcDiffOldest) {
@@ -1721,7 +1719,7 @@ loop:
         W_ mut_words = 0;
 
         debug("maxStackSize= %d\n", ts->maxStackSize);
-        // XXX resetMutableObjects(cur_level, &cur_stats, &mut_words);
+        resetMutableObjects(cur_level, ts, &cur_stats, &mut_words);
 
         fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
         fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
@@ -1770,8 +1768,8 @@ inner_loop:
     // Some closures are added twice on the stack by the initialization code
     // itself.  So we need to take care of that here.
     if ((char *)c >= (char *)mblock_address_space.begin) {
-      if (traverseIsFirstVisit(c) == 0) {
-        printNode (false, ts, se, cur_level, addTraversalStats(&cur_stats, &se->se_subtree_stats));
+      if (traverseIsFirstVisit(ts, c) == 0) {
+        printNode (false, ts, sep, cur_level, addTraversalStats(&cur_stats, &sep->se_subtree_stats));
         goto loop;
       }
     }
@@ -1795,11 +1793,11 @@ inner_loop:
 
         // We just skip IND_STATIC, so it's never visited.
         c = ((StgIndStatic *)c)->indirectee;
-        bool first_visit1 = traverseIsFirstVisit(UNTAG_CLOSURE(c));
+        bool first_visit1 = traverseIsFirstVisit(ts, UNTAG_CLOSURE(c));
         if (first_visit1) {
           goto inner_loop;
         } else {
-          printNode (false, ts, se, cur_level, addTraversalStats(&cur_stats, &se->se_subtree_stats));
+          printNode (false, ts, sep, cur_level, addTraversalStats(&cur_stats, &sep->se_subtree_stats));
           goto loop;
         }
 
@@ -1881,7 +1879,7 @@ inner_loop:
         // XXX ensure there is at least one actual frame between stackStart and
         // stackEnd.
         // XXX pusreturn has been added in the new code
-        sep = traversePushReturn(ts, c, accum, sep);
+        //sep = traversePushReturn(ts, c, accum, sep);
         traversePushStack(cur_level, ts, c, sep, child_data,
                     ((StgStack *)c)->sp,
                     ((StgStack *)c)->stack + ((StgStack *)c)->stack_size);
@@ -1891,7 +1889,7 @@ inner_loop:
     {
         StgTSO *tso = (StgTSO *)c;
 
-        sep = traversePushReturn(ts, c, accum, sep);
+        //sep = traversePushReturn(ts, c, accum, sep);
 
         traversePushClosure(cur_level, ts, (StgClosure *) tso->stackobj, c, sep, child_data);
         traversePushClosure(cur_level, ts, (StgClosure *) tso->blocked_exceptions, c, sep, child_data);
@@ -1911,7 +1909,7 @@ inner_loop:
     {
         StgBlockingQueue *bq = (StgBlockingQueue *)c;
 
-        sep = traversePushReturn(ts, c, accum, sep);
+        //sep = traversePushReturn(ts, c, accum, sep);
 
         traversePushClosure(cur_level, ts, (StgClosure *) bq->link, c, sep, child_data);
         traversePushClosure(cur_level, ts, (StgClosure *) bq->bh, c, sep, child_data);
@@ -1923,7 +1921,7 @@ inner_loop:
     {
         StgPAP *pap = (StgPAP *)c;
 
-        sep = traversePushReturn(ts, c, accum, sep);
+        //sep = traversePushReturn(ts, c, accum, sep);
 
         traversePAP(cur_level, ts, c, sep, child_data, pap->fun, pap->payload, pap->n_args);
         goto loop;
@@ -1933,14 +1931,14 @@ inner_loop:
     {
         StgAP *ap = (StgAP *)c;
 
-        sep = traversePushReturn(ts, c, accum, sep);
+        //sep = traversePushReturn(ts, c, accum, sep);
 
         traversePAP(cur_level, ts, c, sep, child_data, ap->fun, ap->payload, ap->n_args);
         goto loop;
     }
 
     case AP_STACK:
-        sep = traversePushReturn(ts, c, accum, sep);
+        //sep = traversePushReturn(ts, c, accum, sep);
 
         traversePushClosure(cur_level, ts, ((StgAP_STACK *)c)->fun, c, sep, child_data);
         traversePushStack(cur_level, ts, c, sep, child_data,
@@ -1952,18 +1950,19 @@ inner_loop:
 
     ts->stackTop->se_done = true; // XXX means false, because of inversion
                                   // below
-    stackElement *se = ts->stackTop;
-    traverseGetChildren(c, &first_child, &se->se_done, ts->stackTop);
+    stackElement *tse = ts->stackTop;
+    traverseGetChildren(c, &first_child, &tse->se_done, tse);
 
     // XXX the meaning is inverted
-    se->se_done = !se->se_done;
+    tse->se_done = !tse->se_done;
 
     if (first_child == NULL) {
         ts->stackTop->se_done = true;
     }
 
-    // XXX Need to review this 
+    // XXX Need to review this
 
+#if 0
     // If first_child is null, c has no child.
     // If first_child is not null, the top stack element points to the next
     // object.
@@ -1993,6 +1992,7 @@ inner_loop:
 
         sep = pushStackElement(ts, se);
     }
+#endif
 
     // We have already pushed the stack entry in traversePushChildren
     // (c, cp, data) = (first_child, c, child_data)
@@ -2012,10 +2012,10 @@ traverseInvalidateClosureData(traverseState* ts)
 {
     // First make sure any unvisited mutable objects are valid so they're
     // invalidated by the flip below
-    resetMutableObjects(ts);
+    // XXX resetMutableObjects(ts);
 
     // Then flip the flip bit, invalidating all closures.
-    ts->flip = ts->flip ^ 1;
+    flip = flip ^ 1;
 }
 
 /**

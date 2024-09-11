@@ -1104,7 +1104,8 @@ GarbageCollect (uint32_t collect_gen,
   memInventory(DEBUG_gc);
 #endif
 
-  /* Moved up above
+#if 0
+  // Moved up above
   // ok, GC over: tell the stats department what happened.
   stat_endGCWorker(cap, gct);
   stat_endGC(cap, gct, live_words, copied,
@@ -1112,7 +1113,7 @@ GarbageCollect (uint32_t collect_gen,
              N, n_gc_threads, gc_threads,
              par_max_copied, par_balanced_copied,
              any_work, scav_find_work, max_n_todo_overflow);
-   */
+#endif
 
 #if defined(RTS_USER_SIGNALS)
   if (RtsFlags.MiscFlags.install_signal_handlers) {

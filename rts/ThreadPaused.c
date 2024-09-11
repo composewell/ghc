@@ -16,6 +16,7 @@
 #include "Trace.h"
 #include "Threads.h"
 #include "sm/NonMovingMark.h"
+#include "Stats.h"
 
 #include <string.h> // for memmove()
 
@@ -182,10 +183,11 @@ stackSqueeze(Capability *cap, StgTSO *tso, StgPtr bottom)
     }
 }
 
+// XXX trav semantics
 #ifdef GC_PROFILING
 #define SET_GC_ID(c) \
     (((StgClosure *)(c))->header.prof.ccs) = (uint64_t) getNumGcs();\
-    (((StgClosure *)(c))->header.prof.hp.trav.lsb) = flip;
+    (((StgClosure *)(c))->header.prof.hp.trav) |= flip;
 #else
 #define SET_GC_ID(c)
 #endif

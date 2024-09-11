@@ -287,11 +287,11 @@ emitPrimOp dflags primop = case primop of
        | otherwise                  = CmmLit (zeroCLit platform)
     emitAssign (CmmLocal res) val
     -}
-    emitAssign (CmmLocal res) (CmmLit (zeroCLit dflags))
+    emitAssign (CmmLocal res) (CmmLit (zeroCLit platform))
 
   GetCurrentCCSOp -> \[_] -> opIntoRegs $ \[res] ->
     -- emitAssign (CmmLocal res) (CmmLit (mkCCostCentreStack dontCareCCS))
-    emitAssign (CmmLocal res) (CmmLit (zeroCLit dflags))
+    emitAssign (CmmLocal res) (CmmLit (zeroCLit platform))
 
   MyThreadIdOp -> \[] -> opIntoRegs $ \[res] ->
     emitAssign (CmmLocal res) currentTSOExpr
