@@ -335,9 +335,10 @@ traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp,
     se.info.type = posTypeFresh;
     se.se_level = level;
     se.se_done = false;
+    se.se_dup_count = 0;
+
     initTraversalStats (&se.se_parent_stats);
     initTraversalStats (&se.se_subtree_stats);
-    se.se_dup_count = 0;
 
     pushStackElement(ts, se);
 };
@@ -357,8 +358,9 @@ traversePushDone(StgClosure *c, StgClosure *cp, stackData data, int level,
     se.se_level = level;
     se.se_done = true;
     se.se_parent_stats = cur_stats;
-    initTraversalStats (&se.se_subtree_stats);
     se.se_dup_count = 0;
+
+    initTraversalStats (&se.se_subtree_stats);
 
     pushStackElement(ts, se);
 };
@@ -868,9 +870,6 @@ traverseIsFirstVisit(const traverseState *ts, StgClosure *c)
     return false;
 }
 
-// [PORTING]
-// traversePop signature has changed. Will require some effort to port.
-
 /**
  *  Finds the next object to be considered for retainer profiling and store
  *  its pointer to *c.
@@ -897,8 +896,7 @@ traverseIsFirstVisit(const traverseState *ts, StgClosure *c)
  *  size to the parent's se_size.
  */
 STATIC_INLINE void
-traversePop(traverseState *ts, StgClosure **c, StgClosure **cp,
-      stackData *data, stackElement **sep,
+traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data, stackElement **sep,
       int *cur_level, traversalStats *cur_stats)
 {
     stackElement *se;
@@ -1286,11 +1284,6 @@ traverseSmallBitmap (int level, traverseState *ts, StgPtr p, uint32_t size, StgW
     return p;
 }
 
-// [PORTING]
-// traversePushStack signature has changed.
-// We need to add level to this.
-// We need to add level to a lot of places this is called as well
-
 /**
  *  traversePushStack(ts, cp, data, stackStart, stackEnd) pushes all the objects
  *  in the STG stack-chunk from stackStart to stackEnd onto the traversal
@@ -1627,31 +1620,11 @@ static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
     fclose(file);
 }
 
-/**
- * Traverse all closures on the traversal work-stack, calling 'visit_cb' on each
- * closure. See 'visitClosure_cb' for details.
- */
-void
-traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
-{
-    // first_child = first child of c
-    StgClosure *c, *cp, *first_child;
-    stackData data, child_data;
-    StgWord typeOfc;
-    stackElement *sep;
-    //bool other_children;
-    int cur_level = 0;
-    traversalStats cur_stats;
-    // XXX these can overflow, we should reset them every time.
-    uint32_t any = timesAnyObjectVisited;
-    uint32_t total = numObjectVisited;
+static gcStats traversalEntryHook (traversalStats *cur_stats) {
     // We increment the stats before heap traversal.
     uint64_t curGc = (uint64_t) getNumGcs() - 1;
-    // XXX is this same as sep?
-    // stackElement *se;
-    bool verbose = isReportVerbose;
 
-    initTraversalStats (&cur_stats);
+    initTraversalStats (cur_stats);
 
     // XXX This should be checked by the CLI
     if (gcDiffNewest > gcDiffOldest) {
@@ -1677,7 +1650,7 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
                 "verbose %s, fineGrainedPinnedReporting %s\n"
               , stringifyReportType(report), gcDiffNewest
               , gcDiffOldest, gcAbsOldest
-              , verbose ? "true" : "false"
+              , isReportVerbose ? "true" : "false"
               , enable_fine_grained_pinned ? "true" : "false");
 
       uint64_t window_lower;
@@ -1694,43 +1667,36 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
       fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
     }
     fprintf(hp_file, "---------Process memory-----------\n");
-    getMemMaps(verbose, 256);
-    if (verbose) {
+    getMemMaps(isReportVerbose, 256);
+    if (isReportVerbose) {
         getMemUsage();
     }
-    gcStats gcstats = getGCStats(verbose, enable_fine_grained_pinned);
+    gcStats gcstats = getGCStats(isReportVerbose, enable_fine_grained_pinned);
     fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
     fprintf (hp_file, "flip: {%lu}\n" , flip);
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);
     */
+    return gcstats;
+}
 
-    // c = Current closure                           (possibly tagged)
-    // cp = Current closure's Parent                 (NOT tagged)
-    // data = current closures' associated data      (NOT tagged)
-    // child_data = data to associate with current closure's children
-
-loop:
-    // XXX sep has different meaning for us
-    traversePop(ts, &c, &cp, &data, &sep, &cur_level, &cur_stats);
-
-    if (c == NULL) {
+static void traversalExitHook (traverseState *ts, int cur_level,
+      traversalStats *cur_stats, gcStats gcstats, uint32_t any, uint32_t total) {
         W_ mut_words = 0;
 
-        debug("maxStackSize= %d\n", ts->maxStackSize);
-        resetMutableObjects(cur_level, ts, &cur_stats, &mut_words);
+        resetMutableObjects(cur_level, ts, cur_stats, &mut_words);
 
         fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
         fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
         fprintf (hp_file, "filtered bytes: %lu (%lu words)\n"
-              , cur_stats.filtered_size * sizeof(W_), cur_stats.filtered_size);
+              , cur_stats->filtered_size * sizeof(W_), cur_stats->filtered_size);
 
         fprintf(hp_file, "---------Real Usage/Used block space-----------\n");
         reportWithUtilWords ("live bytes"
-              , gcstats.live_words, cur_stats.total_size + mut_words);
-        W_ pinned_size = cur_stats.large_size + cur_stats.small_pinned_size;
-        W_ unpinned_size = cur_stats.total_size - pinned_size;
+              , gcstats.live_words, cur_stats->total_size + mut_words);
+        W_ pinned_size = cur_stats->large_size + cur_stats->small_pinned_size;
+        W_ unpinned_size = cur_stats->total_size - pinned_size;
         reportWithUtilWords (" movable"
               , gcstats.regular_words, unpinned_size);
         // XXX There will be some loss due to alignment of pinned
@@ -1743,22 +1709,60 @@ loop:
         if (enable_fine_grained_pinned) {
           reportWithUtilWords ("  large"
                 , gcstats.large_pinned_words
-                , cur_stats.large_size);
+                , cur_stats->large_size);
           reportWithUtilWords ("  small"
                 , gcstats.small_pinned_words
-                , cur_stats.small_pinned_size);
+                , cur_stats->small_pinned_size);
         }
         reportWithUtilWords (" mut_lists"
         // XXX get it from gcstats?
               , mut_words
               , mut_words);
 
-        if (verbose) {
-          liveDiff(cur_stats.total_size * sizeof(W_));
+        if (isReportVerbose) {
+          liveDiff(cur_stats->total_size * sizeof(W_));
         }
         if (cur_level != 0) {
           barf("Traversal loop ended at cur_level: %d\n", cur_level);
         }
+}
+
+/**
+ * Traverse all closures on the traversal work-stack, calling 'visit_cb' on each
+ * closure. See 'visitClosure_cb' for details.
+ */
+void
+traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
+{
+    // first_child = first child of c
+    StgClosure *c, *cp, *first_child;
+    stackData data, child_data;
+    StgWord typeOfc;
+    stackElement *sep;
+    //bool other_children;
+    int cur_level = 0;
+    traversalStats cur_stats;
+    gcStats gcstats;
+    // XXX these can overflow, we should reset them every time.
+    uint32_t any = timesAnyObjectVisited;
+    uint32_t total = numObjectVisited;
+    // XXX is this same as sep?
+    // stackElement *se;
+
+    gcstats = traversalEntryHook (&cur_stats);
+
+    // c = Current closure                           (possibly tagged)
+    // cp = Current closure's Parent                 (NOT tagged)
+    // data = current closures' associated data      (NOT tagged)
+    // child_data = data to associate with current closure's children
+
+loop:
+    // XXX sep has different meaning for us
+    traversePop(ts, &c, &cp, &data, &sep, &cur_level, &cur_stats);
+
+    if (c == NULL) {
+        debug("maxStackSize= %d\n", ts->maxStackSize);
+        traversalExitHook (ts, cur_level, &cur_stats, gcstats, any, total);
         return;
     }
 
