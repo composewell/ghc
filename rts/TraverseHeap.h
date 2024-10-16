@@ -48,7 +48,8 @@ typedef enum {
     // element (stackPos.next.parent)
     posTypeFresh,
     // This stackElement is empty
-    posTypeEmpty
+    posTypeEmpty,
+    posTypeRoot
 } nextPosType;
 
 typedef union {
@@ -90,10 +91,6 @@ typedef union stackData_ {
 
 extern const stackData nullStackData;
 
-typedef union stackAccum_ {
-    StgWord subtree_sizeW;
-} stackAccum;
-
 // XXX Optimize the stack usage
 typedef struct {
   size_t total_size;
@@ -102,8 +99,13 @@ typedef struct {
   size_t small_pinned_size;
 } traversalStats;
 
-// [PORTING]
-// New fields have been added to stackElement_
+typedef struct stackAccum_ {
+    //StgWord subtree_sizeW;
+    traversalStats se_subtree_stats;
+    int se_dup_count;
+    int se_level;
+    //bool se_done;
+} stackAccum;
 
 /**
  * An element of the traversal work-stack. Besides the closure itself this also
@@ -119,30 +121,14 @@ typedef struct {
 typedef struct stackElement_ {
     stackPos info;
     StgClosure *c;
-    // XXX We could use this for parent stats.
     struct stackElement_ *sep; // stackElement of parent closure
     stackData data;
-
-    // XXX Can use this?
     stackAccum accum;
-    // We traverse all the children of a node before we print the node. We do
-    // this so that we can decide to print or not print the node based on
-    // whether we are printing any of the children. We may not print any
-    // children if they do not pass the filtering criteria, in that case we
-    // want to skip printing the node as well.
-    //
-    // When traversing we keep the aggregate size of all the children of
-    // the node in se_subtree_stats. When we start traversing a child we save
-    // the parent's se_subtree_stats in se_parent_stats so that we can use
-    // se_subtree_stats for the children of the current node.
-    traversalStats se_parent_stats;
-    traversalStats se_subtree_stats;
-    int se_dup_count;
-    int se_level;
-    bool se_done;
 } stackElement;
 
 StgWord flip;
+
+struct traverseState_;
 
 typedef struct traverseState_ {
     /** Note [Profiling heap traversal visited bit]
@@ -245,8 +231,8 @@ typedef struct traverseState_ {
      * @param acc_parent  The accumulator associated with 'c_parent', currently
      *                    on the stack.
      */
-    void (*return_cb)(StgClosure *c, const stackAccum acc,
-                      StgClosure *c_parent, stackAccum *acc_parent);
+    void (*return_cb)(struct traverseState_ *ts, stackElement *se);
+    traversalStats finalStats;
 } traverseState;
 
 /**
@@ -275,7 +261,7 @@ bool isTravDataValid(const traverseState *ts, const StgClosure *c);
 
 void traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb);
 void traversePushRoot(traverseState *ts, StgClosure *c, StgClosure *cp, stackData data);
-void traversePushClosure(int level, traverseState *ts, StgClosure *c, StgClosure *cp,
+void traversePushClosure(traverseState *ts, StgClosure *c, StgClosure *cp,
       stackElement *sep, stackData data);
 bool traverseMaybeInitClosureData(const traverseState* ts, StgClosure *c);
 void traverseInvalidateClosureData(traverseState* ts);
@@ -287,6 +273,7 @@ int getTraverseStackMaxSize(traverseState *ts);
 // for GC.c
 W_ traverseWorkStackBlocks(traverseState *ts);
 void resetStaticObjectForProfiling(const traverseState *ts, StgClosure *static_objects);
+void memXRayCallback (traverseState *ts, stackElement *se);
 
 #include "EndPrivate.h"
 

@@ -310,9 +310,9 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
 
     // (c, cp, r, s, R_r) is available, so compute the retainer set for *c.
     if (retainerSetOfc == NULL) {
+#ifdef GC_PROFILING
         if (!first_visit) {
           // barf ("not first_visit but retainerSetOfc NULL\n");
-#ifdef GC_PROFILING
           const StgInfoTable *info = get_itbl(c);
           fprintf (stderr
                 , "%p %s {%s} {%s}"
@@ -320,10 +320,10 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
                 , closure_type_names[info->type]
                 , GET_PROF_TYPE(info)
                 , GET_PROF_DESC(info));
-#endif
           fprintf(stderr, "[BARF] not first_visit but retainerSetOfc NULL: %p\n", c);
           return 0;
         }
+#endif
         // This is the first visit to *c.
         numObjectVisited++;
 
@@ -339,9 +339,11 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
         // compute c_child_r
         out_data->c_child_r = isRetainer(c) ? getRetainerFrom(c) : r;
     } else {
+#ifdef GC_PROFILING
         if (first_visit) {
           barf ("first_visit but retainerSetOfc not NULL\n");
         }
+#endif
         // This is not the first visit to *c.
         if (isMember(r, retainerSetOfc))
             return 0;          // no need to process children
@@ -375,6 +377,8 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
     return 1; // do process children
 }
 
+static stackElement *root;
+
 // XXX Limit the maximum amount of data written to the prof file, so that we do
 // not get stuck for too long. Or we can put an upper limit on time and check
 // the time after every n closures visited.
@@ -394,18 +398,11 @@ retainRoot(void *user, StgClosure **tl)
     //fprintf (stderr, "retainRoot: closure %p\n", c);
     // XXX Do we need this?
 
-    // [PORTING]
-    // traversePushClosure is possibly renamed to traversePushRoot and a new
-    // function traverseMaybeInitClosureData is added. Adapt the functionality
-    // accordingly.
-
     traverseMaybeInitClosureData(&g_retainerTraverseState, c);
     if (c != &stg_END_TSO_QUEUE_closure && isRetainer(c)) {
-        // XXX root should use level zero
-        traversePushRoot(ts, c, c, (stackData)getRetainerFrom(c));
+        traversePushClosure(ts, c, c, root, (stackData)getRetainerFrom(c));
     } else {
-        // XXX root should use level zero
-        traversePushRoot(ts, c, c, (stackData)CCS_SYSTEM);
+        traversePushClosure(ts, c, c, root, (stackData)CCS_SYSTEM);
     }
 
     // NOT TRUE: ASSERT(isMember(getRetainerFrom(*tl), retainerSetOf(*tl)));
@@ -423,6 +420,8 @@ computeRetainerSet( traverseState *ts )
     uint32_t g, n;
 
     traverseInvalidateClosureData(ts);
+    traversePushRoot(ts, NULL, NULL, (stackData)CCS_SYSTEM);
+    root = ts->stackTop;
 
     // XXX Push in reverse order, so that we traverse the TSO first and weak
     // and stable ptrs last..
@@ -485,6 +484,7 @@ retainerProfile(void)
     and this operation is not costly anyhow). However, we just refresh the
     retainer sets.
    */
+  g_retainerTraverseState.return_cb = memXRayCallback;
   initializeTraverseStack(&g_retainerTraverseState);
   initializeAllRetainerSet();
   computeRetainerSet(&g_retainerTraverseState);
