@@ -26,6 +26,8 @@ StgWord getTravData(const StgClosure *c)
     return hp_hdr & (STG_WORD_MAX ^ 1);
 }
 
+StgWord flip = 0;
+
 void setTravData(const traverseState *ts, StgClosure *c, StgWord w)
 {
     (void) ts;

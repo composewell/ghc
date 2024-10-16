@@ -126,7 +126,7 @@ typedef struct stackElement_ {
     stackAccum accum;
 } stackElement;
 
-StgWord flip;
+extern StgWord flip;
 
 struct traverseState_;
 
