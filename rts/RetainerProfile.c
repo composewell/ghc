@@ -312,7 +312,7 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
     if (retainerSetOfc == NULL) {
 #ifdef GC_PROFILING
         if (!first_visit) {
-          // barf ("not first_visit but retainerSetOfc NULL\n");
+          /*
           const StgInfoTable *info = get_itbl(c);
           fprintf (stderr
                 , "%p %s {%s} {%s}"
@@ -320,7 +320,8 @@ retainVisitClosure( StgClosure *c, const StgClosure *cp, const stackData data, c
                 , closure_type_names[info->type]
                 , GET_PROF_TYPE(info)
                 , GET_PROF_DESC(info));
-          fprintf(stderr, "[BARF] not first_visit but retainerSetOfc NULL: %p\n", c);
+          fprintf(stderr, "retainVisitClosure: not first_visit but retainerSetOfc NULL: %p\n", c);
+          */
           return 0;
         }
 #endif
@@ -398,7 +399,7 @@ retainRoot(void *user, StgClosure **tl)
     //fprintf (stderr, "retainRoot: closure %p\n", c);
     // XXX Do we need this?
 
-    traverseMaybeInitClosureData(&g_retainerTraverseState, c);
+    //traverseMaybeInitClosureData(&g_retainerTraverseState, c);
     if (c != &stg_END_TSO_QUEUE_closure && isRetainer(c)) {
         traversePushClosure(ts, c, c, root, (stackData)getRetainerFrom(c));
     } else {

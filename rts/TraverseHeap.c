@@ -323,6 +323,26 @@ static bool checkTraversalStats (traversalStats *stats) {
 }
 */
 
+static bool
+traverseIsFirstVisit(const traverseState *ts, StgClosure *c)
+{
+  // isTravDataValid means trav bit is same as flip bit.
+    if (!isTravDataValid(ts, c)) {
+        return true;
+    }
+    return false;
+}
+
+static void initStats(stackElement *se, stackElement *sep) {
+    if (!sep) {
+      se->accum.se_level = 0;
+    } else {
+      se->accum.se_level = sep->accum.se_level + 1;
+    }
+    se->accum.se_dup_count = 0;
+    initTraversalStats (&se->accum.se_subtree_stats);
+}
+
 /**
  * Push a single closure onto the traversal work-stack.
  *
@@ -339,15 +359,16 @@ traversePushClosureWith(int posType, traverseState *ts, StgClosure *c, StgClosur
     se.sep = sep;
     se.data = data;
     se.info.type = posType;
+    initStats(&se, sep);
 
-    if (!sep) {
-      se.accum.se_level = 0;
-    } else {
-      se.accum.se_level = sep->accum.se_level + 1;
-    }
-    se.accum.se_dup_count = 0;
-    initTraversalStats (&se.accum.se_subtree_stats);
-
+    if (c) {
+      bool first_visit = traverseIsFirstVisit(ts, UNTAG_CLOSURE(c));
+      if (!first_visit) {
+          // markStablePtrTable adds already visited closures
+          // fprintf(stderr, "traversePushClosure: revisit: %p\n", c);
+          return;
+      }
+    };
     pushStackElement(ts, se);
 };
 
@@ -383,6 +404,7 @@ traversePushReturn(traverseState *ts, StgClosure *c, stackAccum acc, stackElemen
     se.c = c;
     se.info.next.cp = NULL;
     se.accum = acc;
+    initStats(&se, sep);
     se.sep = sep;
     memset(&se.data, 0, sizeof(se.data));
     // return frames never emit closures, traversePop just skips over them. So
@@ -716,7 +738,7 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
     int cur_level = se->accum.se_level;
     traversalStats cur_stats = se->accum.se_subtree_stats;
 
-    bool shouldReportRevisit = true;
+    bool shouldReportRevisit = false;
     if (!first_visit && !shouldReportRevisit) {
         return;
     }
@@ -733,7 +755,7 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
     }
 
     if (!first_visit && cl_static == true) {
-      fprintf(stderr, "printNode: revisit of static closure: %p\n", c_untagged);
+      // fprintf(stderr, "printNode: revisit of static closure: %p\n", c_untagged);
       return;
     }
 
@@ -747,7 +769,7 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
         && strcmp(GET_PROF_DESC(info), GET_PROF_DESC(pinfo)) == 0
         && getClosureSize(UNTAG_CLOSURE(se1->c)) == cl_size) {
         se1->accum.se_dup_count = se1->accum.se_dup_count + se->accum.se_dup_count + 1;
-        fprintf(stderr, "printNode: duplicate closure: %p\n", c_untagged);
+        // fprintf(stderr, "printNode: duplicate closure: %p\n", c_untagged);
         return;
       }
     }
@@ -856,16 +878,7 @@ static bool filterClosure (StgClosure *c, size_t size) {
     return true;
 }
 
-static bool
-traverseIsFirstVisit(const traverseState *ts, StgClosure *c)
-{
-  // isTravDataValid means trav bit is same as flip bit.
-    if (!isTravDataValid(ts, c)) {
-        return true;
-    }
-    return false;
-}
-
+#if 0
 static bool
 checkFirstVisit (traverseState *ts, StgClosure *c, stackElement *se) {
     /*
@@ -895,41 +908,21 @@ checkFirstVisit (traverseState *ts, StgClosure *c, stackElement *se) {
         return false;
     }
 }
+#endif
 
 // Given a stackElement se, add the size of se->c to accumulated stats of se
 // and add the accumulated stats to the stats of se->sep, and print se.
 void
 memXRayCallback (traverseState *ts, stackElement *se) {
 
-    fprintf(stderr, "memXRayCallback\n");
-    // Is prev_se always same as se->sep??
-    // XXX We should use se->sep instead of ts->stackTop for collapsing
-    // duplicates. In the linked data structures like list, the duplicate is
-    // the parent.
+    // fprintf(stderr, "memXRayCallback\n");
     stackAccum *accum = &se->accum;
-    //StgClosure *cp = se->sep->c;
     stackAccum *accump = &se->sep->accum;
-
-    /*
-    *cur_level = *cur_level - 1 ;
-    if (*cur_level < 0) {
-      barf ("cur_level < 0\n");
-    }
-    */
-
     traversalStats *cur_stats = &accum->se_subtree_stats;
     StgClosure *c_untagged = UNTAG_CLOSURE(se->c);
 
-    // We should not be here if it is not first visit, we should have checked
-    // this already and not pushed a stack frame.
-    bool first_visit = traverseIsFirstVisit(ts, c_untagged);
-    if (!first_visit) {
-        barf("memXRayCallback: not first_visit!\n");
-    }
-
     // Add the size of this closure as well.
     if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
-        fprintf(stderr, "memXRayCallback: updating Traversal stats\n");
         size_t cl_size = getClosureSize(c_untagged);
         updateTraversalStats (cur_stats, c_untagged, cl_size);
         if (filterClosure (c_untagged, cl_size)) {
@@ -937,21 +930,14 @@ memXRayCallback (traverseState *ts, stackElement *se) {
         }
     }
 
-    // cur_stats is carried forward and aggregated in the parent
-    // This is the running total.
-    accTraversalStats (cur_stats, &accump->se_subtree_stats);
+    accTraversalStats (&accump->se_subtree_stats, cur_stats);
 
-    /*
-    if (cur_stats->filtered_size > 0 || se->se_subtree_stats.filtered_size > 0) {
-        printNode (true, ts, se, *cur_level,
-            addTraversalStats(cur_stats, &se->se_subtree_stats));
-    }
-    */
-    // earlier cur_stats and se->se_subtree_stats were spearately maintained.
-    // Now there is only one?
     if (cur_stats->filtered_size > 0) {
         // ts->stackTop is required for collapsing duplicates
-        // We can pass that too in return callback
+        // Is prev_se always same as se->sep??
+        // XXX We should use se->sep instead of ts->stackTop for collapsing
+        // duplicates. In the linked data structures like list, the duplicate is
+        // the parent.
         printNode (true, ts, se);
     }
 }
@@ -1009,25 +995,11 @@ traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
             *c = se->c;
             *data = se->data;
             popStackElement(ts);
-            // XXX When all the children of a node are done only then we should
-            // print it.
-            // XXX Do we mark it visited after all children are done or at the
-            // beginning itself?
-            if (!checkFirstVisit(ts, *c, se)) {
-              fprintf(stderr, "traversePop: not first visit, skipping: %p\n", *c);
-              // XXX this is defensive, not required
-              //*c = NULL;
-              continue;
-            };
-            fprintf(stderr, "traversePop: first visit: %p\n", *c);
             return;
         } else if (se->info.type == posTypeEmpty) {
             callReturnAndPopStackElement(ts);
-            // XXX this is defensive, not required
-            //*c = NULL;
             continue;
         } else if (se->info.type == posTypeRoot) {
-            fprintf(stderr, "traversePop: popping root\n");
             // XXX this is defensive, not required
             //*c = NULL;
             assert(se->accum.se_level == 0);
@@ -1634,29 +1606,48 @@ static gcStats traversalEntryHook (void) {
     //
     // if we are reporting heap profile the GC is forced to be a major
     // GC.
+    uint64_t window_lower;
+    uint64_t window_upper;
     if(curGc >= gcDiffOldest) {
-      fprintf ( hp_file
-              , "state: "
-                "report %s, dNewest %lu, dOldest %lu, aOldest %lu, "
-                "verbose %s, fineGrainedPinnedReporting %s\n"
-              , stringifyReportType(report), gcDiffNewest
-              , gcDiffOldest, gcAbsOldest
-              , isReportVerbose ? "true" : "false"
-              , enable_fine_grained_pinned ? "true" : "false");
-
-      uint64_t window_lower;
-      uint64_t window_upper = curGc - gcDiffNewest;
+      window_upper = curGc - gcDiffNewest;
       if (report == GC_SINCE) {
           window_lower = gcAbsOldest;
       } else {
           window_lower = curGc - gcDiffOldest;
       }
-      fprintf (hp_file, "gcids: current {%lu}, window [%lu, %lu]\n"
-            , curGc, window_lower, window_upper);
-
     } else {
-      fprintf (hp_file, "gcids: current {%lu}\n" , curGc);
+      window_lower = curGc;
+      window_upper = curGc;
     }
+
+    int64_t window_lower_cfg;
+    int64_t window_upper_cfg;
+
+    switch (report) {
+        case GC_SINCE:
+          window_lower_cfg = gcAbsOldest;
+          window_upper_cfg = -gcDiffNewest;
+          break;
+        case GC_WINDOW:
+          window_lower_cfg = -gcDiffOldest;
+          window_upper_cfg = -gcDiffNewest;
+          break;
+        default:
+          window_lower_cfg = 0;
+          window_upper_cfg = 0;
+          break;
+    };
+    fprintf ( hp_file
+            , "type {%s %ld %ld} "
+              "current_gc {%lu}, gc window [%lu, %lu]\n"
+              "verbose %s, fineGrainedPinnedReporting %s\n"
+            , stringifyReportType(report)
+            , window_lower_cfg
+            , window_upper_cfg
+            , curGc, window_lower, window_upper
+            , isReportVerbose ? "true" : "false"
+            , enable_fine_grained_pinned ? "true" : "false");
+
     fprintf(hp_file, "---------Process memory-----------\n");
     getMemMaps(isReportVerbose, 256);
     if (isReportVerbose) {
@@ -1665,7 +1656,6 @@ static gcStats traversalEntryHook (void) {
     gcStats gcstats = getGCStats(isReportVerbose, enable_fine_grained_pinned);
     fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
     fprintf (hp_file, "flip: {%lu}\n" , flip);
-    fprintf (stderr, "flip: {%lu}\n" , flip);
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);
@@ -1753,30 +1743,34 @@ loop:
     if (c == NULL) {
         debug("maxStackSize= %d\n", ts->maxStackSize);
         traversalExitHook (ts, gcstats, any, total);
-        barf ("exit hook\n");
+        fflush (hp_file);
         return;
     }
 
 inner_loop:
     c = UNTAG_CLOSURE(c);
 
-    // Some closures are added twice on the stack by the initialization code
-    // itself.  So we need to take care of that here.
-    //
-    // XXX this code is similar to checkFirstVisit
+    stackAccum accum = {};
+
     if ((char *)c >= (char *)mblock_address_space.begin) {
-      if (traverseIsFirstVisit(ts, c) == 0) {
-        // This should not happen as we do first visit check for posTypeFresh
-        // in traversePop. And for other types of entries we should not even
-        // push if it is visited. If required, this can be pushed to the exit
-        // point of traversePop.
-        //barf("traverseWorkStack: object being revisited.\n");
-        printNode (false, ts, sep);
+      if (traverseIsFirstVisit(ts, c) == false) {
+        // We normally do not push a closure which is already
+        // visited. But sometimes we keep pushing closures even before
+        // we get a chance to process the ones that we pushed before,
+        // thus we may push the same closure multiple times. XXX We can
+        // mark a closure visited before we push it.
+        //
+        // XXX Should we do this for static closures as well?
+        stackElement se;
+        se.c = c;
+        se.sep = sep;
+        se.accum = accum;
+        initStats(&se, sep);
+        printNode (false, ts, &se);
+        // fprintf(stderr, "traverseWorkStack: closure being revisited: %p, level %d\n", c, sep->accum.se_level);
         goto loop;
       }
     }
-
-    stackAccum accum = {};
 
     typeOfc = get_itbl(c)->type;
 
@@ -1791,15 +1785,18 @@ inner_loop:
         break;
 
     case IND_STATIC:
-        // XXX
-        sep = traversePushReturn(ts, c, accum, sep);
         // We just skip IND_STATIC, so it's never visited.
         c = ((StgIndStatic *)c)->indirectee;
         bool first_visit1 = traverseIsFirstVisit(ts, UNTAG_CLOSURE(c));
         if (first_visit1) {
           goto inner_loop;
         } else {
-          printNode (false, ts, sep);
+          stackElement se;
+          se.c = c;
+          se.sep = sep;
+          se.accum = accum;
+          initStats(&se, sep);
+          printNode (false, ts, &se);
           goto loop;
         }
 
@@ -1858,19 +1855,25 @@ inner_loop:
     bool first_visit = traverseMaybeInitClosureData(ts, c);
     bool traverse_children = first_visit;
     if(visit_cb)
-        traverse_children = visit_cb(c, cp, data, first_visit,
+        traverse_children = visit_cb(c, UNTAG_CLOSURE(cp), data, first_visit,
                                      &accum, &child_data);
     if(!traverse_children) {
-        // We do not come here, as we can come here if it is not first visit
-        // and we check for first visit at the beginning of loop itself.
+        // We can come here only if it is not first visit and we check
+        // for first visit at the beginning of loop itself.
         // XXX but that check is only for non-static closures
-        // XXX We also check for revisit in traversePop. We should
-        // consolidate all the revisit check code.
-        // barf ("traverse_children is false\n");
-        //sep = traversePushReturn(ts, c, accum, sep);
-        //XXX print revisit of node?
-        fprintf(stderr, "traverse_children is false: %p\n", c);
+        if ((char *)c >= (char *)mblock_address_space.begin) {
+          barf("traverse_children is false: %p\n", c);
+        }
         goto loop;
+    }
+
+    if (!first_visit) {
+        if ((char *)c >= (char *)mblock_address_space.begin) {
+          barf("traverseWorkStack: not first visit processing children: %p\n", c);
+        } else {
+          // XXX check why this case occurs.
+          //fprintf(stderr, "static: not first visit processing children: %p\n", c);
+        }
     }
 
     // process child
@@ -1960,7 +1963,11 @@ inner_loop:
         // the stack due to return_cb, so don't get any funny ideas about
         // replacing 'cp' by sep.
         ASSERT(sep->c == cp);
-        ts->return_cb(ts, sep);
+        se.sep = sep;
+        se.data = child_data;
+        se.accum = accum;
+        initStats(&se, sep);
+        ts->return_cb(ts, &se);
         goto loop;
     } else if (first_child == NULL) { // no children
         barf("return_cb is not set\n");
@@ -1979,6 +1986,7 @@ inner_loop:
         se.sep = sep;
         se.data = child_data;
         se.accum = accum;
+        initStats(&se, sep);
 
         sep = pushStackElement(ts, se);
     }
@@ -1987,6 +1995,17 @@ inner_loop:
     data = child_data;
     cp = c;
     c = first_child;
+    // XXX don't need the static check
+    if ((char *)c >= (char *)mblock_address_space.begin) {
+      if (traverseIsFirstVisit(ts, c) == false) {
+        se.c = c;
+        se.sep = sep;
+        se.accum = accum;
+        initStats(&se, sep);
+        printNode (false, ts, &se);
+        goto loop;
+      }
+    }
     goto inner_loop;
 }
 
