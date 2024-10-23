@@ -536,6 +536,13 @@ initHeapProfiling(void)
 
     fprintf(hp_file, "\"\n" );
 
+#if defined(GC_PROFILING)
+    fprintf(hp_file, "closure tree entry format:\n"
+      "<lvl> <addr> <closure type> {data type} {constr} {alloc gcid}:\n"
+      "<closure size> (dup count) [subtree size including this]"
+      " <LARGE or SMALL PINNED>\n");
+#endif
+
     fprintf(hp_file, "DATE \"%s\"\n", time_str());
 
     fprintf(hp_file, "SAMPLE_UNIT \"seconds\"\n");

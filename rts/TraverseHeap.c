@@ -827,9 +827,14 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
     if (cl_static == true) {
       cl_size = 0;
     }
+
+    // Format of closure tree entry:
+    // <level> <address> <closure type> {prof type} {prof desc} {alloc gcid}
+    // <closure size> (duplicate count) [subtree size including this]
+    // <LARGE or SMALL PINNED>
     fillSpaces(spaces, cur_level);
     fprintf (hp_file
-          , "%s%d %p %s {%s} {%s} {%lu}:"
+          , "%s%d %p %s %s %s %lu:"
           , spaces
           , cur_level
           , c_untagged
