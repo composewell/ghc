@@ -821,10 +821,16 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
 // can be avoided.
 // XXX We can also implement generational gc at a finer granularity using gcid
 // as the generation.
-uint64_t gcDiffNewest = 10;
-uint64_t gcDiffOldest = 20;
-uint64_t gcAbsOldest = 10;
-enum ReportType report = GC_WINDOW;
+
+// curGC - gcDiffNewest is the most recent gc to be included in the filter.
+int64_t gcDiffNewest = 10;
+// curGC - gcDiffOldest is the oldest gc to be included in the filter.
+int64_t gcDiffOldest = 20;
+// gcAbsOldest is the oldest gc to be included in the filter.
+int64_t gcAbsOldest = 10;
+// gcLastReported + 1 is the oldest gc to be included in the filter.
+int64_t gcLastReported = -1;
+enum ReportType report = GC_ROLLING;
 bool isReportVerbose = false;
 bool enable_fine_grained_pinned = true;
 
@@ -839,6 +845,7 @@ static const char* stringifyReportType(enum ReportType rep)
 {
    switch (rep)
    {
+      case GC_ROLLING: return "GC_ROLLING";
       case GC_SINCE: return "GC_SINCE";
       case GC_WINDOW: return "GC_WINDOW";
       case GC_STATS: return "GC_STATS";
@@ -848,14 +855,19 @@ static const char* stringifyReportType(enum ReportType rep)
 
 static bool filterClosure (StgClosure *c, size_t size) {
     // We increment the stats before heap traversal.
-    uint64_t curGC = (uint64_t) getNumGcs() - 1;
-    uint64_t gcid = (StgWord64) c->header.prof.ccs;
+    int64_t curGC = (int64_t) getNumGcs() - 1;
+    int64_t gcid = (int64_t) c->header.prof.ccs;
 
     if (size < sizeThreshold) {
       return false;
     }
 
     switch (report) {
+      case GC_ROLLING:
+        if (gcid <= gcLastReported || gcid > curGC - gcDiffNewest) {
+          return false;
+        }
+        break;
       case GC_WINDOW:
         if (gcid < curGC - gcDiffOldest || gcid > curGC - gcDiffNewest) {
           return false;
@@ -1587,8 +1599,6 @@ static gcStats traversalEntryHook (void) {
     // We increment the stats before heap traversal.
     uint64_t curGc = (uint64_t) getNumGcs() - 1;
 
-    // initTraversalStats (cur_stats);
-
     // XXX This should be checked by the CLI
     if (gcDiffNewest > gcDiffOldest) {
       gcDiffNewest = gcDiffOldest;
@@ -1606,47 +1616,45 @@ static gcStats traversalEntryHook (void) {
     //
     // if we are reporting heap profile the GC is forced to be a major
     // GC.
-    uint64_t window_lower;
-    uint64_t window_upper;
-    if(curGc >= gcDiffOldest) {
-      window_upper = curGc - gcDiffNewest;
-      if (report == GC_SINCE) {
-          window_lower = gcAbsOldest;
-      } else {
-          window_lower = curGc - gcDiffOldest;
-      }
-    } else {
-      window_lower = curGc;
-      window_upper = curGc;
-    }
-
-    int64_t window_lower_cfg;
-    int64_t window_upper_cfg;
+    int64_t window_lower;
+    int64_t window_upper;
 
     switch (report) {
+        case GC_ROLLING:
+          window_lower = gcLastReported + 1;
+          window_upper = curGc - gcDiffNewest;
+          break;
         case GC_SINCE:
-          window_lower_cfg = gcAbsOldest;
-          window_upper_cfg = -gcDiffNewest;
+          window_lower = gcAbsOldest;
+          window_upper = curGc - gcDiffNewest;
           break;
         case GC_WINDOW:
-          window_lower_cfg = -gcDiffOldest;
-          window_upper_cfg = -gcDiffNewest;
+          window_lower = curGc - gcDiffOldest;
+          window_upper = curGc - gcDiffNewest;
           break;
         default:
-          window_lower_cfg = 0;
-          window_upper_cfg = 0;
+          window_lower = 0;
+          window_upper = 0;
           break;
     };
     fprintf ( hp_file
-            , "type {%s %ld %ld} "
-              "current_gc {%lu}, gc window [%lu, %lu]\n"
-              "verbose %s, fineGrainedPinnedReporting %s\n"
-            , stringifyReportType(report)
-            , window_lower_cfg
-            , window_upper_cfg
-            , curGc, window_lower, window_upper
+            , "config:\n"
+              " verbose: %s\n"
+              " report_unpinned: %s\n"
+              " detailed_pinned: %s\n"
+              " cur_gcid: %lu\n"
+              " filter: %s\n"
+              "  min_gcid: %ld\n"
+              "  max_gcid: %ld\n"
+              "  min_size: %lu\n"
             , isReportVerbose ? "true" : "false"
-            , enable_fine_grained_pinned ? "true" : "false");
+            , enableUnpinned ? "true" : "false"
+            , enable_fine_grained_pinned ? "true" : "false"
+            , curGc
+            , stringifyReportType(report)
+            , window_lower
+            , window_upper
+            , sizeThreshold);
 
     fprintf(hp_file, "---------Process memory-----------\n");
     getMemMaps(isReportVerbose, 256);
@@ -1655,7 +1663,7 @@ static gcStats traversalEntryHook (void) {
     }
     gcStats gcstats = getGCStats(isReportVerbose, enable_fine_grained_pinned);
     fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
-    fprintf (hp_file, "flip: {%lu}\n" , flip);
+    //fprintf (hp_file, "flip: {%lu}\n" , flip);
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);
@@ -1669,8 +1677,8 @@ static void traversalExitHook (traverseState *ts, gcStats gcstats, uint32_t any,
 
     resetMutableObjects(ts, cur_stats, &mut_words);
 
-    fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
-    fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
+    //fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
+    //fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
     fprintf (hp_file, "filtered bytes: %lu (%lu words)\n"
           , cur_stats->filtered_size * sizeof(W_), cur_stats->filtered_size);
 
@@ -1704,11 +1712,8 @@ static void traversalExitHook (traverseState *ts, gcStats gcstats, uint32_t any,
     if (isReportVerbose) {
       liveDiff(cur_stats->total_size * sizeof(W_));
     }
-    /*
-    if (cur_level != 0) {
-      barf("Traversal loop ended at cur_level: %d\n", cur_level);
-    }
-    */
+
+    gcLastReported = (int64_t) getNumGcs() - 1 - gcDiffNewest;
 }
 
 /**

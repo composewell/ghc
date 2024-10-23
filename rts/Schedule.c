@@ -1523,15 +1523,16 @@ void triggerProf( StgWord8 reportGcType
     case 2:
         report = GC_STATS;
         break;
+    case 3:
+        report = GC_ROLLING;
+        break;
     }
     isReportVerbose = isVerbose;
     enable_fine_grained_pinned = isFineGrainedPinnedReporting;
 
-    // XXX Is there a way to manually specify coercion?
-    // Int to Unsigned Int should be fine?
-    gcDiffNewest = gcDNewest;
-    gcDiffOldest = gcDOldest;
-    gcAbsOldest = gcAOldest;
+    gcDiffNewest = (int64_t) gcDNewest;
+    gcDiffOldest = (int64_t) gcDOldest;
+    gcAbsOldest = (int64_t) gcAOldest;
 #endif
     profileOnce = true;
 }
