@@ -729,6 +729,9 @@ static void fillSpaces(char *spaces, int cur_level) {
     spaces[i] = '\0';
 }
 
+static void traversalEntryHook (void);
+static int initialized = 0;
+static gcStats gcstats;
 static bool collapseDuplicates = 1;
 
 // XXX Report maximum, average object size, and histogram
@@ -774,6 +777,10 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
       }
     }
 
+    if (!initialized) {
+      traversalEntryHook();
+    }
+
     // We print the static closure size as 0 because we do not account it.
     if (cl_static == true) {
       cl_size = 0;
@@ -809,7 +816,6 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
     } else {
       fprintf (hp_file, " (revisit)\n");
     }
-    return;
 }
 
 // XXX Frequency of doing the profile should be related to the window size.
@@ -833,6 +839,7 @@ int64_t gcLastReported = -1;
 enum ReportType report = GC_ROLLING;
 bool isReportVerbose = false;
 bool enable_fine_grained_pinned = true;
+bool report_only_when_filtered = true;
 
 // In words. Display only objects larger than this.
 // uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
@@ -1595,7 +1602,7 @@ static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
     fclose(file);
 }
 
-static gcStats traversalEntryHook (void) {
+static void traversalEntryHook (void) {
     // We increment the stats before heap traversal.
     uint64_t curGc = (uint64_t) getNumGcs() - 1;
 
@@ -1603,6 +1610,11 @@ static gcStats traversalEntryHook (void) {
     if (gcDiffNewest > gcDiffOldest) {
       gcDiffNewest = gcDiffOldest;
     }
+
+    fprintf (hp_file, "-----------Begin memory leak profile-------------\n");
+
+    //fprintf(hp_file, "---------Config-----------\n");
+
     // XXX Using the profiling header moves the perfectly aligned page size
     // allocations by a few bytes, thus increasing the slop significantly. To
     // avoid that we can use a per megablock bitmap to keep track of the
@@ -1661,22 +1673,25 @@ static gcStats traversalEntryHook (void) {
     if (isReportVerbose) {
         getMemUsage();
     }
-    gcStats gcstats = getGCStats(isReportVerbose, enable_fine_grained_pinned);
+    gcstats = getGCStats(isReportVerbose, enable_fine_grained_pinned);
     fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
     //fprintf (hp_file, "flip: {%lu}\n" , flip);
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
           , mblock_address_space.begin);
     */
-    return gcstats;
+
+    initialized = 1;
 }
 
-static void traversalExitHook (traverseState *ts, gcStats gcstats, uint32_t any, uint32_t total) {
+static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) {
     traversalStats *cur_stats = &ts->finalStats;
     W_ mut_words = 0;
 
     resetMutableObjects(ts, cur_stats, &mut_words);
 
+    (void) any;
+    (void) total;
     //fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
     //fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
     fprintf (hp_file, "filtered bytes: %lu (%lu words)\n"
@@ -1713,6 +1728,8 @@ static void traversalExitHook (traverseState *ts, gcStats gcstats, uint32_t any,
       liveDiff(cur_stats->total_size * sizeof(W_));
     }
 
+    fprintf (hp_file, "-----------End memory leak profile-------------\n");
+
     gcLastReported = (int64_t) getNumGcs() - 1 - gcDiffNewest;
 }
 
@@ -1729,13 +1746,15 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
     StgWord typeOfc;
     stackElement *sep;
     bool other_children;
-    gcStats gcstats;
     // XXX these can overflow, we should reset them every time.
     uint32_t any = timesAnyObjectVisited;
     uint32_t total = numObjectVisited;
 
+    initialized = 0;
     initTraversalStats(&ts->finalStats);
-    gcstats = traversalEntryHook ();
+    if (!report_only_when_filtered) {
+      traversalEntryHook ();
+    }
 
     // c = Current closure                           (possibly tagged)
     // cp = Current closure's Parent                 (NOT tagged)
@@ -1747,7 +1766,9 @@ loop:
 
     if (c == NULL) {
         debug("maxStackSize= %d\n", ts->maxStackSize);
-        traversalExitHook (ts, gcstats, any, total);
+        if (initialized) {
+          traversalExitHook (ts, any, total);
+        }
         fflush (hp_file);
         return;
     }

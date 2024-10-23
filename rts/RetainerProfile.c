@@ -473,7 +473,6 @@ computeRetainerSet( traverseState *ts )
 void
 retainerProfile(void)
 {
-  fprintf (hp_file, "-----------Begin memory leak profile-------------\n");
   // stat_startRP();
 
   numObjectVisited = 0;
@@ -500,7 +499,6 @@ retainerProfile(void)
     getTraverseStackMaxSize(&g_retainerTraverseState),
     (double)timesAnyObjectVisited / numObjectVisited);
   */
-  fprintf (hp_file, "-----------End memory leak profile-------------\n");
   fflush (hp_file);
 }
 
