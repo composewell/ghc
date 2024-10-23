@@ -734,6 +734,44 @@ static int initialized = 0;
 static gcStats gcstats;
 static bool collapseDuplicates = 1;
 
+// XXX Frequency of doing the profile should be related to the window size.
+// Such that we are checking a window of particular size and in the next check
+// we slide past that.
+// XXX We can also implement traversing only those objects which were
+// created/mutated since the last check, using gcid to identify the
+// creation generation. If an object is old it's entire subtree check
+// can be avoided.
+// XXX We can also implement generational gc at a finer granularity using gcid
+// as the generation.
+
+// curGC - gcDiffNewest is the most recent gc to be included in the filter.
+int64_t gcDiffNewest = 10;
+// curGC - gcDiffOldest is the oldest gc to be included in the filter.
+int64_t gcDiffOldest = 20;
+// gcAbsOldest is the oldest gc to be included in the filter.
+int64_t gcAbsOldest = 10;
+// gcLastReported + 1 is the oldest gc to be included in the filter.
+int64_t gcLastReported = -1;
+enum ReportType report = GC_ROLLING;
+bool report_only_when_filtered = true;
+bool report_verbose = false;
+bool report_config = false;
+bool report_process = false;
+bool report_mblock = false;
+bool report_block = false;
+bool report_block_used = false;
+bool report_closures = true;
+bool report_live = false;
+bool report_pinned_details = false;
+bool report_blackholes = false;
+
+// In words. Display only objects larger than this.
+// uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
+uint64_t sizeThreshold = 0;
+// When set to false, do not display unpinned blocks, only pinned are
+// displayed.
+bool enableUnpinned = true;
+
 // XXX Report maximum, average object size, and histogram
 //
 // CAUTION: modifies the ts->stackTop->se_dup_count.
@@ -777,6 +815,10 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
       }
     }
 
+    if (!report_blackholes && info->type == BLACKHOLE) {
+      return;
+    }
+
     if (!initialized) {
       traversalEntryHook();
     }
@@ -817,43 +859,6 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
       fprintf (hp_file, " (revisit)\n");
     }
 }
-
-// XXX Frequency of doing the profile should be related to the window size.
-// Such that we are checking a window of particular size and in the next check
-// we slide past that.
-// XXX We can also implement traversing only those objects which were
-// created/mutated since the last check, using gcid to identify the
-// creation generation. If an object is old it's entire subtree check
-// can be avoided.
-// XXX We can also implement generational gc at a finer granularity using gcid
-// as the generation.
-
-// curGC - gcDiffNewest is the most recent gc to be included in the filter.
-int64_t gcDiffNewest = 10;
-// curGC - gcDiffOldest is the oldest gc to be included in the filter.
-int64_t gcDiffOldest = 20;
-// gcAbsOldest is the oldest gc to be included in the filter.
-int64_t gcAbsOldest = 10;
-// gcLastReported + 1 is the oldest gc to be included in the filter.
-int64_t gcLastReported = -1;
-enum ReportType report = GC_ROLLING;
-bool report_only_when_filtered = true;
-bool report_verbose = false;
-bool report_config = false;
-bool report_process = false;
-bool report_mblock = false;
-bool report_block = false;
-bool report_block_used = false;
-bool report_closures = true;
-bool report_live = false;
-bool report_pinned_details = false;
-
-// In words. Display only objects larger than this.
-// uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
-uint64_t sizeThreshold = 0;
-// When set to false, do not display unpinned blocks, only pinned are
-// displayed.
-bool enableUnpinned = true;
 
 static const char* stringifyReportType(enum ReportType rep)
 {
