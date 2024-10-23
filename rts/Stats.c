@@ -1755,7 +1755,11 @@ static void reportWithUtil (char *desc, W_ blocks, W_ used_words) {
   reportWithUtilWords (desc, total_words, used_words);
 }
 
-gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
+gcStats getGCStats(bool verbose,
+          bool report_mblock,
+          bool report_block,
+          bool report_block_used,
+          bool enable_fine_grained_pinned)
 {
   uint32_t g, i;
   uint32_t gen_large_objs, gen_large_multi_objs, gen_compact_objs;
@@ -1953,27 +1957,29 @@ gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
   */
   // Blocks allocated at mblock allocator level. These blocks may have free
   // space which is accounted in the free blocks at block level.
-  fprintf(hp_file, "---------MBlock allocator Summary-----------\n");
-  fprintf(hp_file, "n_alloc_mblocks:%lu (~%lu blocks)\n"
-        , mblocks_allocated
-        , mblocks_allocated * BLOCKS_PER_MBLOCK);
+  if (report_mblock) {
+    fprintf(hp_file, "---------MBlock allocator Summary-----------\n");
+    fprintf(hp_file, "n_alloc_mblocks:%lu (~%lu blocks)\n"
+          , mblocks_allocated
+          , mblocks_allocated * BLOCKS_PER_MBLOCK);
 
-  fprintf(hp_file, " n_alloc_blocks:%lu (%lu%%)\n"
-        , n_alloc_blocks
-        , (n_alloc_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
+    fprintf(hp_file, " n_alloc_blocks:%lu (%lu%%)\n"
+          , n_alloc_blocks
+          , (n_alloc_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
 
-  W_ n_free_blocks = countFreeListBlocks();
+    W_ n_free_blocks = countFreeListBlocks();
 
-  // Blocks that are completely free at the block allocator level, not
-  // even in nursery, but not contiguous mblocks. fragmented free space
-  // in used mblocks.
-  fprintf(hp_file, " n_free_blocks:%lu (%lu%%)\n"
-        , n_free_blocks
-        , (n_free_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
+    // Blocks that are completely free at the block allocator level, not
+    // even in nursery, but not contiguous mblocks. fragmented free space
+    // in used mblocks.
+    fprintf(hp_file, " n_free_blocks:%lu (%lu%%)\n"
+          , n_free_blocks
+          , (n_free_blocks * 100) / (mblocks_allocated * BLOCKS_PER_MBLOCK));
 
-  // Completely free mblocks, none of this space is used anywhere and can be
-  // returned to the OS.
-  fprintf(hp_file, "n_free_mblocks:%lu\n", countFreeMBlocks());
+    // Completely free mblocks, none of this space is used anywhere and can be
+    // returned to the OS.
+    fprintf(hp_file, "n_free_mblocks:%lu\n", countFreeMBlocks());
+  }
 
   W_ tot_live_blocks =
         tot_reg_blocks
@@ -1983,49 +1989,53 @@ gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned)
 
   W_ tot_large_single_blocks = tot_large_blocks - tot_large_multi_objs;
 
-  fprintf(hp_file, "---------Block allocator Summary-----------\n");
-  fprintf(hp_file,
-        "n_alloc_blocks:%lu\n"
-        " used: %lu\n"
-        "  movable: %lu\n"
-        "   generations: %lu\n"
-        "   gcthreads: %lu\n"
-        "  pinned: %lu\n"
-        "   large: %lu\n"
-        "   small: %u\n"
-        "  compact (pinned): %lu\n"
-        "  mut_lists (pinned): %lu\n"
-        " free (nurseries): %lu\n"
-      , n_alloc_blocks
-      , tot_live_blocks
-      , tot_reg_blocks
-      , tot_reg_blocks - tot_gct_blocks
-      , tot_gct_blocks
-      , tot_large_blocks
-      , tot_large_single_blocks
-      , tot_large_multi_objs
-      , tot_compact_blocks
-      , tot_mut_blocks
-      , n_alloc_blocks - tot_live_blocks);
-
-  fprintf(hp_file, "---------Block Level Used/Total-----------\n");
-  reportWithUtil ("used/total bytes", tot_live_blocks, tot_live_words);
-  reportWithUtil (" movable", tot_reg_blocks, tot_reg_words);
-  reportWithUtil ("  generations", tot_reg_blocks - tot_gct_blocks,
-      tot_reg_words - tot_gct_words);
-  reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
-  reportWithUtil (" pinned", tot_large_blocks, tot_large_words);
-
-  if (enable_fine_grained_pinned) {
-    tot_large_multi_words += cur_pinned_words;
-    reportWithUtil ("  large"
-        , tot_large_single_blocks, tot_large_single_words);
-    reportWithUtil ("  small"
-        , tot_large_multi_objs, tot_large_multi_words);
+  if (report_block) {
+    fprintf(hp_file, "---------Block allocator Summary-----------\n");
+    fprintf(hp_file,
+          "n_alloc_blocks:%lu\n"
+          " used: %lu\n"
+          "  movable: %lu\n"
+          "   generations: %lu\n"
+          "   gcthreads: %lu\n"
+          "  pinned: %lu\n"
+          "   large: %lu\n"
+          "   small: %u\n"
+          "  compact (pinned): %lu\n"
+          "  mut_lists (pinned): %lu\n"
+          " free (nurseries): %lu\n"
+        , n_alloc_blocks
+        , tot_live_blocks
+        , tot_reg_blocks
+        , tot_reg_blocks - tot_gct_blocks
+        , tot_gct_blocks
+        , tot_large_blocks
+        , tot_large_single_blocks
+        , tot_large_multi_objs
+        , tot_compact_blocks
+        , tot_mut_blocks
+        , n_alloc_blocks - tot_live_blocks);
   }
-  fprintf(hp_file, " compact (pinned): %lu\n"
-      , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
-  reportWithUtil (" mut_lists (pinned)", tot_mut_blocks, tot_mut_words);
+
+  if (report_block_used) {
+    fprintf(hp_file, "---------Block Level Used/Total-----------\n");
+    reportWithUtil ("used/total bytes", tot_live_blocks, tot_live_words);
+    reportWithUtil (" movable", tot_reg_blocks, tot_reg_words);
+    reportWithUtil ("  generations", tot_reg_blocks - tot_gct_blocks,
+        tot_reg_words - tot_gct_words);
+    reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
+    reportWithUtil (" pinned", tot_large_blocks, tot_large_words);
+
+    if (enable_fine_grained_pinned) {
+      tot_large_multi_words += cur_pinned_words;
+      reportWithUtil ("  large"
+          , tot_large_single_blocks, tot_large_single_words);
+      reportWithUtil ("  small"
+          , tot_large_multi_objs, tot_large_multi_words);
+    }
+    fprintf(hp_file, " compact (pinned): %lu\n"
+        , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
+    reportWithUtil (" mut_lists (pinned)", tot_mut_blocks, tot_mut_words);
+  }
 
   if (enable_fine_grained_pinned) {
     fprintf(hp_file, "---------Large object counts-----------\n");

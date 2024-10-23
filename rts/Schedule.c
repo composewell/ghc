@@ -1521,14 +1521,11 @@ void triggerProf( StgWord8 reportGcType
         report = GC_WINDOW;
         break;
     case 2:
-        report = GC_STATS;
-        break;
-    case 3:
         report = GC_ROLLING;
         break;
     }
-    isReportVerbose = isVerbose;
-    enable_fine_grained_pinned = isFineGrainedPinnedReporting;
+    report_verbose = isVerbose;
+    report_pinned_details = isFineGrainedPinnedReporting;
 
     gcDiffNewest = (int64_t) gcDNewest;
     gcDiffOldest = (int64_t) gcDOldest;

@@ -837,9 +837,16 @@ int64_t gcAbsOldest = 10;
 // gcLastReported + 1 is the oldest gc to be included in the filter.
 int64_t gcLastReported = -1;
 enum ReportType report = GC_ROLLING;
-bool isReportVerbose = false;
-bool enable_fine_grained_pinned = true;
 bool report_only_when_filtered = true;
+bool report_verbose = false;
+bool report_config = false;
+bool report_process = false;
+bool report_mblock = false;
+bool report_block = false;
+bool report_block_used = false;
+bool report_closures = true;
+bool report_live = false;
+bool report_pinned_details = false;
 
 // In words. Display only objects larger than this.
 // uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
@@ -855,7 +862,6 @@ static const char* stringifyReportType(enum ReportType rep)
       case GC_ROLLING: return "GC_ROLLING";
       case GC_SINCE: return "GC_SINCE";
       case GC_WINDOW: return "GC_WINDOW";
-      case GC_STATS: return "GC_STATS";
       default: barf ("stringifyReportType: invalid report type\n");
    }
 }
@@ -864,6 +870,10 @@ static bool filterClosure (StgClosure *c, size_t size) {
     // We increment the stats before heap traversal.
     int64_t curGC = (int64_t) getNumGcs() - 1;
     int64_t gcid = (int64_t) c->header.prof.ccs;
+
+    if (!report_closures) {
+      return false;
+    }
 
     if (size < sizeThreshold) {
       return false;
@@ -885,7 +895,6 @@ static bool filterClosure (StgClosure *c, size_t size) {
           return false;
         }
         break;
-      case GC_STATS: return false;
       default: barf("filterClosure: unhandled report type\n");
     }
 
@@ -1602,17 +1611,8 @@ static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
     fclose(file);
 }
 
-static void traversalEntryHook (void) {
-    // We increment the stats before heap traversal.
-    uint64_t curGc = (uint64_t) getNumGcs() - 1;
-
-    // XXX This should be checked by the CLI
-    if (gcDiffNewest > gcDiffOldest) {
-      gcDiffNewest = gcDiffOldest;
-    }
-
-    fprintf (hp_file, "-----------Begin memory leak profile-------------\n");
-
+static void do_report_closures(int64_t curGc) {
+    fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
     //fprintf(hp_file, "---------Config-----------\n");
 
     // XXX Using the profiling header moves the perfectly aligned page size
@@ -1651,30 +1651,61 @@ static void traversalEntryHook (void) {
     };
     fprintf ( hp_file
             , "config:\n"
-              " verbose: %s\n"
-              " report_unpinned: %s\n"
-              " detailed_pinned: %s\n"
               " cur_gcid: %lu\n"
-              " filter: %s\n"
+              " filters:\n"
+              "  type: %s\n"
               "  min_gcid: %ld\n"
               "  max_gcid: %ld\n"
               "  min_size: %lu\n"
-            , isReportVerbose ? "true" : "false"
-            , enableUnpinned ? "true" : "false"
-            , enable_fine_grained_pinned ? "true" : "false"
+              "closure tree:\n"
             , curGc
             , stringifyReportType(report)
             , window_lower
             , window_upper
             , sizeThreshold);
+}
 
-    fprintf(hp_file, "---------Process memory-----------\n");
-    getMemMaps(isReportVerbose, 256);
-    if (isReportVerbose) {
-        getMemUsage();
+static void traversalEntryHook (void) {
+    // We increment the stats before heap traversal.
+    int64_t curGc = getNumGcs() - 1;
+
+    // XXX This should be checked by the CLI
+    if (gcDiffNewest > gcDiffOldest) {
+      gcDiffNewest = gcDiffOldest;
     }
-    gcstats = getGCStats(isReportVerbose, enable_fine_grained_pinned);
-    fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
+
+    fprintf (hp_file, "-----------Begin memory leak profile-------------\n");
+
+    if (report_config) {
+      fprintf ( hp_file
+              , "config:\n"
+                " verbose: %s\n"
+                " report_unpinned: %s\n"
+                " detailed_pinned: %s\n"
+                " cur_gcid: %lu\n"
+              , report_verbose ? "true" : "false"
+              , enableUnpinned ? "true" : "false"
+              , report_pinned_details ? "true" : "false"
+              , curGc);
+    }
+
+    if (report_process) {
+      fprintf(hp_file, "---------Process memory-----------\n");
+      getMemMaps(report_verbose, 256);
+      if (report_verbose) {
+          getMemUsage();
+      }
+    }
+
+    gcstats = getGCStats(report_verbose,
+          report_mblock,
+          report_block,
+          report_block_used,
+          report_pinned_details);
+
+    if (report_closures) {
+      do_report_closures(curGc);
+    }
     //fprintf (hp_file, "flip: {%lu}\n" , flip);
     /*
     fprintf (hp_file, "Haskell heap base address: {%lx}\n"
@@ -1684,20 +1715,8 @@ static void traversalEntryHook (void) {
     initialized = 1;
 }
 
-static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) {
-    traversalStats *cur_stats = &ts->finalStats;
-    W_ mut_words = 0;
-
-    resetMutableObjects(ts, cur_stats, &mut_words);
-
-    (void) any;
-    (void) total;
-    //fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
-    //fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
-    fprintf (hp_file, "filtered bytes: %lu (%lu words)\n"
-          , cur_stats->filtered_size * sizeof(W_), cur_stats->filtered_size);
-
-    fprintf(hp_file, "---------Real Usage/Used block space-----------\n");
+static void do_report_live(traversalStats *cur_stats, W_ mut_words) {
+    fprintf(hp_file, "---------live data/block usage-----------\n");
     reportWithUtilWords ("live bytes"
           , gcstats.live_words, cur_stats->total_size + mut_words);
     W_ pinned_size = cur_stats->large_size + cur_stats->small_pinned_size;
@@ -1711,7 +1730,7 @@ static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) 
     reportWithUtilWords (" pinned"
           , gcstats.large_words
           , pinned_size);
-    if (enable_fine_grained_pinned) {
+    if (report_pinned_details) {
       reportWithUtilWords ("  large"
             , gcstats.large_pinned_words
             , cur_stats->large_size);
@@ -1724,8 +1743,29 @@ static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) 
           , mut_words
           , mut_words);
 
-    if (isReportVerbose) {
+    if (report_verbose) {
       liveDiff(cur_stats->total_size * sizeof(W_));
+    }
+}
+
+static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) {
+    traversalStats *cur_stats = &ts->finalStats;
+    W_ mut_words = 0;
+
+    resetMutableObjects(ts, cur_stats, &mut_words);
+
+    (void) any;
+    (void) total;
+    //fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
+    //fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
+
+    if (report_closures) {
+      fprintf (hp_file, "matching bytes: %lu (%lu words)\n"
+            , cur_stats->filtered_size * sizeof(W_), cur_stats->filtered_size);
+    }
+
+    if (report_live) {
+      do_report_live(cur_stats, mut_words);
     }
 
     fprintf (hp_file, "-----------End memory leak profile-------------\n");

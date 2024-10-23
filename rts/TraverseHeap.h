@@ -23,7 +23,6 @@
 enum ReportType {
   GC_WINDOW,
   GC_SINCE,
-  GC_STATS,
   GC_ROLLING
 };
 
@@ -31,8 +30,8 @@ extern int64_t gcDiffNewest;
 extern int64_t gcDiffOldest;
 extern int64_t gcAbsOldest;
 extern enum ReportType report;
-extern bool isReportVerbose;
-extern bool enable_fine_grained_pinned;
+extern bool report_verbose;
+extern bool report_pinned_details;
 
 // -----------------------------------------------------------------------------
 

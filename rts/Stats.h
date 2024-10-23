@@ -127,7 +127,11 @@ typedef struct {
 
 uint32_t getNumGcs(void);
 void reportWithUtilWords (char *desc, W_ total_words, W_ used_words);
-gcStats getGCStats(bool verbose, bool enable_fine_grained_pinned);
+gcStats getGCStats(bool verbose,
+          bool report_mblock,
+          bool report_block,
+          bool report_block_used,
+          bool enable_fine_grained_pinned);
 void liveDiff(size_t bytes);
 
 #include "EndPrivate.h"
