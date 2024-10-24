@@ -764,6 +764,7 @@ bool report_closures = true;
 bool report_live = false;
 bool report_pinned_details = false;
 bool report_blackholes = false;
+bool report_addr = false;
 
 // In words. Display only objects larger than this.
 // uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
@@ -825,19 +826,32 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
     }
 
     // Format of closure tree entry:
-    // <level> <address> <closure type> {prof type} {prof desc} {alloc gcid}
+    // <lvl> <optional addr> <info tbl addr> <closure type> {data type} {constr} {alloc gcid}:
     // <closure size> (duplicate count) [subtree size including this]
     // <LARGE or SMALL PINNED>
     fillSpaces(spaces, cur_level);
-    fprintf (hp_file
-          , "%s%d %p %s %s %s %lu:"
-          , spaces
-          , cur_level
-          , c_untagged
-          , closure_type_names[info->type]
-          , GET_PROF_TYPE(info)
-          , GET_PROF_DESC(info)
-          , (StgWord64) c_untagged->header.prof.ccs);
+    if (report_addr) {
+      fprintf (hp_file
+            , "%s%d %p %p %s %s %s %lu:"
+            , spaces
+            , cur_level
+            , c_untagged
+            , info
+            , closure_type_names[info->type]
+            , GET_PROF_TYPE(info)
+            , GET_PROF_DESC(info)
+            , (StgWord64) c_untagged->header.prof.ccs);
+    } else {
+      fprintf (hp_file
+            , "%s%d %p %s %s %s %lu:"
+            , spaces
+            , cur_level
+            , info
+            , closure_type_names[info->type]
+            , GET_PROF_TYPE(info)
+            , GET_PROF_DESC(info)
+            , (StgWord64) c_untagged->header.prof.ccs);
+    }
     if (se->accum.se_dup_count > 0) {
       fprintf (hp_file, " %lu (x%d) [%lu]"
               , cl_size

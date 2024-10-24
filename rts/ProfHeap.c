@@ -538,7 +538,7 @@ initHeapProfiling(void)
 
 #if defined(GC_PROFILING)
     fprintf(hp_file, "closure tree entry format:\n"
-      "<lvl> <addr> <closure type> {data type} {constr} {alloc gcid}:\n"
+      "<lvl> <optional addr> <info tbl addr> <closure type> {data type} {constr} {alloc gcid}:\n"
       "<closure size> (dup count) [subtree size including this]"
       " <LARGE or SMALL PINNED>\n");
 #endif
