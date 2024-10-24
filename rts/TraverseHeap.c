@@ -765,6 +765,7 @@ bool report_live = false;
 bool report_pinned_details = false;
 bool report_blackholes = false;
 bool report_addr = false;
+bool report_srcloc = false;
 
 // In words. Display only objects larger than this.
 // uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
@@ -828,29 +829,36 @@ static void printNode (bool first_visit, bool include_cur, traverseState *ts, st
     // <lvl> <optional addr> <info tbl addr> <closure type> {data type} {constr} {alloc gcid}:
     // <closure size> (duplicate count) [subtree size including this]
     // <LARGE or SMALL PINNED>
+    // XXX reduce the number of calls to fprintf.
     fillSpaces(spaces, cur_level);
+    fprintf (hp_file , "%s%d", spaces, cur_level);
     if (report_addr) {
-      fprintf (hp_file
-            , "%s%d %p %p %s %s %s %lu:"
-            , spaces
-            , cur_level
-            , c_untagged
-            , info
-            , closure_type_names[info->type]
-            , GET_PROF_TYPE(info)
-            , GET_PROF_DESC(info)
-            , (StgWord64) c_untagged->header.prof.ccs);
+      fprintf (hp_file, " %p ", c_untagged);
+    }
+    fprintf (hp_file, " %p", info);
+    if (report_srcloc) {
+      InfoProvEnt *p;
+      // XXX info ptrs are shifted by 32 bytes
+      p = lookupIPE((StgInfoTable *)((char *)info + 32));
+      if (p) {
+        fprintf (hp_file
+              , " {%s}{%s}{%s}{%s}{%s}{%s}"
+              , closure_type_names[atoi(p->prov.closure_desc)]
+              , p->prov.srcloc
+              , p->prov.module
+              , p->prov.label
+              , p->prov.ty_desc
+              , p->prov.table_name
+              );
+      }
     } else {
       fprintf (hp_file
-            , "%s%d %p %s %s %s %lu:"
-            , spaces
-            , cur_level
-            , info
+            , " %s %s %s"
             , closure_type_names[info->type]
             , GET_PROF_TYPE(info)
-            , GET_PROF_DESC(info)
-            , (StgWord64) c_untagged->header.prof.ccs);
+            , GET_PROF_DESC(info));
     }
+    fprintf (hp_file, " %lu:", (StgWord64) c_untagged->header.prof.ccs);
     if (se->accum.se_dup_count > 0) {
       fprintf (hp_file, " %lu (x%d) [%lu]"
               , cl_size
@@ -1557,7 +1565,7 @@ enum parseState {
     findHeader
 };
 
-static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
+void getMemMaps(bool verbose, size_t threshold_rss_kb) {
     FILE *file;
     char buffer[4096];
     char header[4096];
@@ -1626,7 +1634,7 @@ static void getMemMaps(bool verbose, size_t threshold_rss_kb) {
                     state = findHeader;
                 }
                 continue;
-            default: barf ("getMemMpas: illegal state\n");
+            default: barf ("getMemMaps: illegal state\n");
         }
     }
 

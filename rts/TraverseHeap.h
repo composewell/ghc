@@ -272,6 +272,7 @@ int getTraverseStackMaxSize(traverseState *ts);
 W_ traverseWorkStackBlocks(traverseState *ts);
 void resetStaticObjectForProfiling(const traverseState *ts, StgClosure *static_objects);
 void memXRayCallback (traverseState *ts, stackElement *se);
+void getMemMaps(bool verbose, size_t threshold_rss_kb);
 
 #include "EndPrivate.h"
 
