@@ -1055,8 +1055,6 @@ traversePop(traverseState *ts, StgClosure **c, StgClosure **cp, stackData *data,
             callReturnAndPopStackElement(ts);
             continue;
         } else if (se->info.type == posTypeRoot) {
-            // XXX this is defensive, not required
-            //*c = NULL;
             assert(se->accum.se_level == 0);
             ts->finalStats = se->accum.se_subtree_stats;
             popStackElement(ts);
@@ -1834,6 +1832,7 @@ loop:
     if (c == NULL) {
         debug("maxStackSize= %d\n", ts->maxStackSize);
         if (initialized) {
+          fprintf (hp_file, "0 total: [%lu]\n" , ts->finalStats.filtered_size);
           traversalExitHook (ts, any, total);
         }
         fflush (hp_file);
