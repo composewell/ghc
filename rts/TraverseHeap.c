@@ -786,9 +786,9 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
 
     StgClosure *c_untagged;
     c_untagged = UNTAG_CLOSURE(se->c);
+    const StgInfoTable *info = get_itbl(c_untagged);
     size_t cl_size;
     char spaces[MAX_SPACES];
-    const StgInfoTable *info = get_itbl(c_untagged);
     bool cl_static = false;
 
     if ((char *)c_untagged < (char *)mblock_address_space.begin) {
@@ -813,10 +813,6 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
         // fprintf(stderr, "printNode: duplicate closure: %p\n", c_untagged);
         return;
       }
-    }
-
-    if (!report_blackholes && info->type == BLACKHOLE) {
-      return;
     }
 
     if (!initialized) {
@@ -846,9 +842,9 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
       fprintf (hp_file, " %lu (x%d) [%lu]"
               , cl_size
               , (se->accum.se_dup_count+1)
-              , cur_stats.total_size);
+              , cur_stats.filtered_size);
     } else {
-      fprintf (hp_file, " %lu [%lu]", cl_size, cur_stats.total_size);
+      fprintf (hp_file, " %lu [%lu]", cl_size, cur_stats.filtered_size);
     }
 
     // XXX we can mark COMPACT as well if required.
@@ -876,16 +872,22 @@ static const char* stringifyReportType(enum ReportType rep)
    }
 }
 
+// XXX consolidate UNTAG_CLOSURE calls so that we do not call it unnecessarily.
 static bool filterClosure (StgClosure *c, size_t size) {
     // We increment the stats before heap traversal.
     int64_t curGC = (int64_t) getNumGcs() - 1;
     int64_t gcid = (int64_t) c->header.prof.ccs;
+    const StgInfoTable *info = get_itbl(UNTAG_CLOSURE(c));
 
     if (!report_closures) {
       return false;
     }
 
     if (size < sizeThreshold) {
+      return false;
+    }
+
+    if (!report_blackholes && info->type == BLACKHOLE) {
       return false;
     }
 
