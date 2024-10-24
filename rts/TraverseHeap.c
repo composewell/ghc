@@ -745,7 +745,7 @@ static bool collapseDuplicates = 1;
 // as the generation.
 
 // curGC - gcDiffNewest is the most recent gc to be included in the filter.
-int64_t gcDiffNewest = 10;
+int64_t gcDiffNewest = 3;
 // curGC - gcDiffOldest is the oldest gc to be included in the filter.
 int64_t gcDiffOldest = 20;
 // gcAbsOldest is the oldest gc to be included in the filter.

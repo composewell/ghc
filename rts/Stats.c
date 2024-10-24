@@ -1722,10 +1722,10 @@ void getRTSStats( RTSStats *s )
 
 // XXX do we need a mutex for this?
 // XXX 32-bit field might overflow?
-// Should we use major_gcs instead?
 uint32_t getNumGcs(void)
 {
-    return stats.gcs;
+    // major gcs are more interesting
+    return stats.major_gcs;
 }
 
 extern size_t getClosureSize(const StgClosure *p);

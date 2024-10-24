@@ -1542,6 +1542,7 @@ enum profileType {
 };
 
 static enum profileType profType = PROFILE_ON_GCID;
+static int64_t last_checked_gc_id = -1;
 
 // XXX Trigger dump if live-bytes exceeds a specified limit.
 // If live-bytes rate of increase is more than specified value.
@@ -1553,12 +1554,17 @@ scheduleNeedHeapProfile( bool ready_to_gc )
     // every GC.  This lets us get repeatable runs for debugging.
 
     if (RtsFlags.ProfFlags.doHeapProfile && ready_to_gc) {
-      uint64_t numGcs = getNumGcs();
-      uint64_t gcFreq = RtsFlags.ProfFlags.heapProfileIntervalTicks;
+      int64_t numGcs = getNumGcs();
+      int64_t gcFreq = RtsFlags.ProfFlags.heapProfileIntervalTicks;
       bool triggerViaInterval = gcFreq > 0 && (numGcs % gcFreq == 0);
+      bool retval = profileOnce || triggerViaInterval;
       switch (profType) {
         case PROFILE_ON_GCID:
-            return (profileOnce || triggerViaInterval);
+            // do not trigger multiple times in the same major gc
+            if (numGcs != last_checked_gc_id) {
+              last_checked_gc_id = numGcs;
+              return retval;
+            }
             break;
         case PROFILE_ON_TICK:
           if (RtsFlags.ProfFlags.heapProfileInterval == 0 ||
