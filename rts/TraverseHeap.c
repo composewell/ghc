@@ -776,7 +776,7 @@ bool enableUnpinned = true;
 // XXX Report maximum, average object size, and histogram
 //
 // CAUTION: modifies the ts->stackTop->se_dup_count.
-static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
+static void printNode (bool first_visit, bool include_cur, traverseState *ts, stackElement *se) {
     int cur_level = se->accum.se_level;
     traversalStats cur_stats = se->accum.se_subtree_stats;
 
@@ -820,8 +820,7 @@ static void printNode (bool first_visit, traverseState *ts, stackElement *se) {
       traversalEntryHook();
     }
 
-    // We print the static closure size as 0 because we do not account it.
-    if (cl_static == true) {
+    if (!include_cur) {
       cl_size = 0;
     }
 
@@ -974,12 +973,14 @@ memXRayCallback (traverseState *ts, stackElement *se) {
     stackAccum *accump = &se->sep->accum;
     traversalStats *cur_stats = &accum->se_subtree_stats;
     StgClosure *c_untagged = UNTAG_CLOSURE(se->c);
+    bool include_cur = false;
 
     // Add the size of this closure as well.
     if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
         size_t cl_size = getClosureSize(c_untagged);
         updateTraversalStats (cur_stats, c_untagged, cl_size);
-        if (filterClosure (c_untagged, cl_size)) {
+        include_cur = filterClosure (c_untagged, cl_size);
+        if (include_cur) {
           cur_stats->filtered_size += cl_size;
         }
     }
@@ -992,7 +993,7 @@ memXRayCallback (traverseState *ts, stackElement *se) {
         // XXX We should use se->sep instead of ts->stackTop for collapsing
         // duplicates. In the linked data structures like list, the duplicate is
         // the parent.
-        printNode (true, ts, se);
+        printNode (true, include_cur, ts, se);
     }
 }
 
@@ -1858,7 +1859,7 @@ inner_loop:
         se.sep = sep;
         se.accum = accum;
         initStats(&se, sep);
-        printNode (false, ts, &se);
+        printNode (false, false, ts, &se);
         // fprintf(stderr, "traverseWorkStack: closure being revisited: %p, level %d\n", c, sep->accum.se_level);
         goto loop;
       }
@@ -1888,7 +1889,7 @@ inner_loop:
           se.sep = sep;
           se.accum = accum;
           initStats(&se, sep);
-          printNode (false, ts, &se);
+          printNode (false, false, ts, &se);
           goto loop;
         }
 
@@ -2094,7 +2095,7 @@ inner_loop:
         se.sep = sep;
         se.accum = accum;
         initStats(&se, sep);
-        printNode (false, ts, &se);
+        printNode (false, false, ts, &se);
         goto loop;
       }
     }
