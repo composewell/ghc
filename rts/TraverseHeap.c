@@ -756,12 +756,12 @@ enum ReportType report = GC_ROLLING;
 bool report_only_when_filtered = true;
 bool report_verbose = false;
 bool report_config = false;
-bool report_process = false;
-bool report_mblock = false;
-bool report_block = false;
-bool report_block_used = false;
+bool report_process = true;
+bool report_mblock = true;
+bool report_block = true;
+bool report_block_used = true;
 bool report_closures = true;
-bool report_live = false;
+bool report_live = true;
 bool report_pinned_details = false;
 bool report_blackholes = false;
 bool report_addr = false;
@@ -1645,8 +1645,8 @@ void getMemMaps(bool verbose, size_t threshold_rss_kb) {
 }
 
 static void do_report_closures(int64_t curGc) {
-    fprintf(hp_file, "---------Haskell Closure Level Usage-----------\n");
-    //fprintf(hp_file, "---------Config-----------\n");
+    fprintf(hp_file, "<heap object tree>\n");
+    fprintf(hp_file, "------------------\n");
 
     // XXX Using the profiling header moves the perfectly aligned page size
     // allocations by a few bytes, thus increasing the slop significantly. To
@@ -1690,7 +1690,7 @@ static void do_report_closures(int64_t curGc) {
               "  min_gcid: %ld\n"
               "  max_gcid: %ld\n"
               "  min_size: %lu\n"
-              "closure tree:\n"
+              "object tree:\n"
             , curGc
             , stringifyReportType(report)
             , window_lower
@@ -1707,7 +1707,8 @@ static void traversalEntryHook (void) {
       gcDiffNewest = gcDiffOldest;
     }
 
-    fprintf (hp_file, "-----------Begin memory leak profile-------------\n");
+    fprintf (hp_file, "<leak profile>\n");
+    fprintf (hp_file, "--------------\n");
 
     if (report_config) {
       fprintf ( hp_file
@@ -1723,11 +1724,13 @@ static void traversalEntryHook (void) {
     }
 
     if (report_process) {
-      fprintf(hp_file, "---------Process memory-----------\n");
+      fprintf(hp_file, "<process memory>\n");
+      fprintf(hp_file, "----------------\n");
       getMemMaps(report_verbose, 256);
       if (report_verbose) {
           getMemUsage();
       }
+      fprintf(hp_file, "</process memory>\n");
     }
 
     gcstats = getGCStats(report_verbose,
@@ -1749,7 +1752,8 @@ static void traversalEntryHook (void) {
 }
 
 static void do_report_live(traversalStats *cur_stats, W_ mut_words) {
-    fprintf(hp_file, "---------live data/block usage-----------\n");
+    fprintf(hp_file, "<memory utilization>\n");
+    fprintf(hp_file, "---------live bytes/total bytes-----------\n");
     reportWithUtilWords ("live bytes"
           , gcstats.live_words, cur_stats->total_size + mut_words);
     W_ pinned_size = cur_stats->large_size + cur_stats->small_pinned_size;
@@ -1779,6 +1783,7 @@ static void do_report_live(traversalStats *cur_stats, W_ mut_words) {
     if (report_verbose) {
       liveDiff(cur_stats->total_size * sizeof(W_));
     }
+    fprintf(hp_file, "</memory utilization>\n");
 }
 
 static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) {
@@ -1795,13 +1800,14 @@ static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) 
     if (report_closures) {
       fprintf (hp_file, "matching bytes: %lu (%lu words)\n"
             , cur_stats->filtered_size * sizeof(W_), cur_stats->filtered_size);
+      fprintf(hp_file, "</heap object tree>\n");
     }
 
     if (report_live) {
       do_report_live(cur_stats, mut_words);
     }
 
-    fprintf (hp_file, "-----------End memory leak profile-------------\n");
+    fprintf (hp_file, "</leak profile>\n");
 
     gcLastReported = (int64_t) getNumGcs() - 1 - gcDiffNewest;
 }

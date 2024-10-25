@@ -553,9 +553,9 @@ initHeapProfiling(void)
     printSample(false, 0);
 
 #if defined(GC_PROFILING)
-    fprintf(hp_file, "-----------Begin process memory map-------------\n");
+    fprintf(hp_file, "<initial process memory map>\n");
     getMemMaps(true, 0);
-    fprintf(hp_file, "-----------End process memory map-------------\n");
+    fprintf(hp_file, "</initial process memory map>\n");
 
     if (doingRetainerProfiling()) {
         initRetainerProfiling();

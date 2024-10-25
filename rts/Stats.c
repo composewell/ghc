@@ -1791,6 +1791,8 @@ gcStats getGCStats(bool verbose,
   tot_large_multi_objs = 0;
   tot_compact_objs = 0;
 
+  fprintf(hp_file, "<allocation stats>\n");
+  fprintf(hp_file, "------------------\n");
   for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
       gen = &generations[g];
 
@@ -1907,7 +1909,7 @@ gcStats getGCStats(bool verbose,
 
         if (enable_fine_grained_pinned) {
           fprintf(hp_file,
-                " Pinned object count: %u\n"
+                " pinned object count: %u\n"
                 "  large: %u\n"
                 "  small: %u\n"
               , gen_large_objs
@@ -2101,6 +2103,8 @@ gcStats getGCStats(bool verbose,
     fprintf(hp_file, "\n");
   }
   */
+
+  fprintf(hp_file, "</allocation stats>\n");
 
   gcStats st;
   st.live_words = tot_live_words;
