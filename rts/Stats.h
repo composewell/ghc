@@ -123,6 +123,9 @@ typedef struct {
   W_ large_words;
   W_ small_pinned_words;
   W_ large_pinned_words;
+  W_ large_slop_words;
+  W_ small_slop_words;
+  W_ cur_pinned_words;
 } gcStats;
 
 uint32_t getNumGcs(void);
@@ -131,7 +134,10 @@ gcStats getGCStats(bool verbose,
           bool report_mblock,
           bool report_block,
           bool report_block_used,
-          bool enable_fine_grained_pinned);
+          bool enable_fine_grained_pinned,
+          W_ anon);
 void liveDiff(size_t bytes);
+void dumpBlocks(void);
+void initBlocks(void);
 
 #include "EndPrivate.h"

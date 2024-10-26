@@ -131,7 +131,12 @@ typedef struct bdescr_ {
                                // (if group head, 0 otherwise)
 
 #if SIZEOF_VOID_P == 8
+#ifdef GC_PROFILING
+    StgWord32 wordsSeen;
+    StgWord32 _padding[2];
+#else
     StgWord32 _padding[3];
+#endif
 #else
     StgWord32 _padding[0];
 #endif

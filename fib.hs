@@ -16,30 +16,38 @@ import System.Mem
 import qualified Data.ByteString as BS
 
 loop = do
+    -- triggerProf (ReportSince 0 0) False False
     -- To get unpinned large blocks
-    let a = array (1,4000) ((1,1) : [(i, i * a!(i-1)) | i <- [2..100]])
-    let b = BS.pack [1..254]
-    let c = BS.pack $ concat $ replicate 9 [1..254]
-    let d = BS.pack $ concat $ replicate 9 [1..253]
+    let a = array (1,3999) ((1,1) : [(i, i * a!(i-1)) | i <- [2..100 :: Int]])
+
+    -- Pinned small
+    let b = BS.pack [0..253]
+    let c = BS.pack $ concat $ replicate 9 [1..253]
+    let d = BS.pack $ concat $ replicate 9 [1..254]
+
+    -- pinned large
+    let e = BS.pack $ concat $ replicate 15 [1..254]
+
     -- capabilities <- getNumCapabilities
     -- putStrLn $ "Number of capabilities: " ++ show capabilities
     putStrLn $ "allocated array (unpinned) of size: " ++ show (length a)
     putStrLn $ "allocated bytestring (pinned) of size: " ++ show (BS.length b)
     putStrLn $ "allocated bytestring (pinned) of size: " ++ show (BS.length c)
     putStrLn $ "allocated bytestring (pinned) of size: " ++ show (BS.length d)
+    putStrLn $ "allocated bytestring (pinned) of size: " ++ show (BS.length e)
     let !r1 = f 20
-    triggerProf (ReportSince 0 0) False False
     let !r2 = f 30
     print $ r1 + r2
     -- threadDelay 100000000
     -- We are touching these here to make sure the allocations are present up
     -- to this point.
-    print $ length a
+    print $ a ! 1
     print $ BS.last b
     print $ BS.last c
     print $ BS.last d
+    print $ BS.last e
     errorWithStackTrace "hello"
-    performMajorGC
+    -- performMajorGC
 
     where
 

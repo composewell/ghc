@@ -275,17 +275,31 @@ static void initTraversalStats (traversalStats *stats) {
     stats->small_pinned_size = 0;
 }
 
+// XXX BF_COMPACT and BF_LARGE also imply pinned.
 static bool isClosurePinned (StgClosure *c) {
     StgPtr p = (StgPtr)c;
     bdescr *bd;
 
     bd = Bdescr(p);
-    return ((bd->flags & (BF_PINNED | BF_LARGE | BF_COMPACT)) != 0);
+    return (bd->flags & BF_PINNED);
+}
+
+static bool isClosureLarge (StgClosure *c) {
+    StgPtr p = (StgPtr)c;
+    bdescr *bd;
+
+    bd = Bdescr(p);
+    return (bd->flags & BF_LARGE);
 }
 
 static void updateTraversalStats (traversalStats *dst, StgClosure *c, size_t size) {
     dst->total_size += size;
-    if (size * sizeof(W_) >= LARGE_OBJECT_THRESHOLD) {
+    // XXX cur_pinned_blocks are also marked BF_LARGE, so we need
+    // additional closure size check. Do we need the isClosureLarge
+    // condition here?
+    // If a large closure is allocated in a pointer bump fashion or may
+    // not be marked as BF_LARGE?
+    if (isClosureLarge (c) && size * sizeof(W_) >= LARGE_OBJECT_THRESHOLD) {
       dst->large_size += size;
     } else {
       if (isClosurePinned (c)) {
@@ -326,6 +340,7 @@ static bool checkTraversalStats (traversalStats *stats) {
 static bool
 traverseIsFirstVisit(const traverseState *ts, StgClosure *c)
 {
+    assert(UNTAG_CLOSURE(c) == c);
   // isTravDataValid means trav bit is same as flip bit.
     if (!isTravDataValid(ts, c)) {
         return true;
@@ -729,10 +744,15 @@ static void fillSpaces(char *spaces, int cur_level) {
     spaces[i] = '\0';
 }
 
-static void traversalEntryHook (void);
+static void traversalReportBegin (void);
 static int initialized = 0;
 static gcStats gcstats;
 static bool collapseDuplicates = 1;
+typedef struct {
+  W_ rss;
+  W_ anon;
+} memStats;
+static memStats memstats;
 
 // XXX Frequency of doing the profile should be related to the window size.
 // Such that we are checking a window of particular size and in the next check
@@ -756,16 +776,19 @@ enum ReportType report = GC_ROLLING;
 bool report_only_when_filtered = true;
 bool report_verbose = false;
 bool report_config = false;
-bool report_process = true;
-bool report_mblock = true;
-bool report_block = true;
-bool report_block_used = true;
+bool report_process = false;
+bool report_mblock = false;
+bool report_block = false;
+bool report_block_used = false;
 bool report_closures = true;
-bool report_live = true;
+bool report_live = false;
 bool report_pinned_details = false;
 bool report_blackholes = false;
 bool report_addr = false;
 bool report_srcloc = false;
+bool report_indented = false;
+bool report_dump_blocks = false;
+bool report_mem_usage = false;
 
 // In words. Display only objects larger than this.
 // uint64_t sizeThreshold = (LARGE_OBJECT_THRESHOLD/sizeof(W_));
@@ -790,7 +813,6 @@ static void printNode (bool first_visit, bool include_cur, traverseState *ts, st
     c_untagged = UNTAG_CLOSURE(se->c);
     const StgInfoTable *info = get_itbl(c_untagged);
     size_t cl_size;
-    char spaces[MAX_SPACES];
     bool cl_static = false;
 
     if ((char *)c_untagged < (char *)mblock_address_space.begin) {
@@ -818,7 +840,7 @@ static void printNode (bool first_visit, bool include_cur, traverseState *ts, st
     }
 
     if (!initialized) {
-      traversalEntryHook();
+      traversalReportBegin();
     }
 
     if (!include_cur) {
@@ -830,8 +852,13 @@ static void printNode (bool first_visit, bool include_cur, traverseState *ts, st
     // <closure size> (duplicate count) [subtree size including this]
     // <LARGE or SMALL PINNED>
     // XXX reduce the number of calls to fprintf.
-    fillSpaces(spaces, cur_level);
-    fprintf (hp_file , "%s%d", spaces, cur_level);
+    if (report_indented) {
+      char spaces[MAX_SPACES];
+      fillSpaces(spaces, cur_level);
+      fprintf (hp_file , "%s%d", spaces, cur_level);
+    } else {
+      fprintf (hp_file , " %d", cur_level);
+    }
     if (report_addr) {
       fprintf (hp_file, " %p ", c_untagged);
     }
@@ -983,9 +1010,18 @@ memXRayCallback (traverseState *ts, stackElement *se) {
     StgClosure *c_untagged = UNTAG_CLOSURE(se->c);
     bool include_cur = false;
 
+    // Ensure that it is marked as visited, we can use an assert instead
+    // because we should have already marked it.
+    traverseMaybeInitClosureData(ts, c_untagged);
+
     // Add the size of this closure as well.
     if ((char *)c_untagged >= (char *)mblock_address_space.begin) {
         size_t cl_size = getClosureSize(c_untagged);
+        bdescr *bd = Bdescr((StgPtr)c_untagged);
+
+        if (report_dump_blocks) {
+          bd->wordsSeen += cl_size;
+        }
         updateTraversalStats (cur_stats, c_untagged, cl_size);
         include_cur = filterClosure (c_untagged, cl_size);
         if (include_cur) {
@@ -1483,6 +1519,7 @@ resetMutableObjects(traverseState *ts, traversalStats *cur_stats, W_ *mut_words)
     StgPtr ml;
     char spaces[MAX_SPACES];
     int cur_level = 0;
+    int first_time = 0;
 
     fillSpaces(spaces, cur_level);
 
@@ -1497,13 +1534,17 @@ resetMutableObjects(traverseState *ts, traversalStats *cur_stats, W_ *mut_words)
         // visited during heap traversal.
         for (n = 0; n < getNumCapabilities(); n++) {
           for (bd = capabilities[n]->mut_lists[g]; bd != NULL; bd = bd->link) {
+            // The block contains pointers to closures.
             for (ml = bd->start; ml < bd->free; ml++) {
                 bool first_visit = traverseMaybeInitClosureData(ts, (StgClosure *)*ml);
                 timesAnyObjectVisited++;
                 // Account the pointer word
                 (*mut_words)++;
+                if (report_dump_blocks) {
+                  bd->wordsSeen++;
+                }
                 if (first_visit) {
-                  StgClosure *c_untagged = UNTAG_CLOSURE((StgClosure *)*ml);
+                  StgClosure *c_untagged = (StgClosure *)*ml;
                   const StgInfoTable *info = get_itbl(c_untagged);
                   // fprintf (stderr, "----------> mut object missed\n");
                   numObjectVisited++;
@@ -1512,17 +1553,21 @@ resetMutableObjects(traverseState *ts, traversalStats *cur_stats, W_ *mut_words)
                       updateTraversalStats (cur_stats, c_untagged, cl_size);
                       if (filterClosure (c_untagged, cl_size)) {
                         cur_stats->filtered_size += cl_size;
+                        if (first_time == 0) {
+                          fprintf (hp_file, "mut_words:\n");
+                          first_time = 1;
+                        }
                         fprintf (hp_file
                               , "%s%d %p %s {%s} {%s} {%lu}:"
                               , spaces
                               , cur_level
-                              , c_untagged
+                              , info
                               , closure_type_names[info->type]
                               , GET_PROF_TYPE(info)
                               , GET_PROF_DESC(info)
                               , (StgWord64) c_untagged->header.prof.ccs);
                         // XXX total_size is accumulated.
-                        fprintf (hp_file, " %lu [%lu]", cl_size, cur_stats->total_size);
+                        fprintf (hp_file, " %lu\n", cl_size);
                       }
                   }
                 }
@@ -1638,6 +1683,8 @@ void getMemMaps(bool verbose, size_t threshold_rss_kb) {
         }
     }
 
+    memstats.rss = total_rss;
+    memstats.anon = total_anon;
     fprintf(hp_file, "Total Rss: %lu kB\n", total_rss);
     fprintf(hp_file, " File maps: %lu kB\n", total_rss - total_anon);
     fprintf(hp_file, " Anonymous: %lu kB\n", total_anon);
@@ -1698,14 +1745,9 @@ static void do_report_closures(int64_t curGc) {
             , sizeThreshold);
 }
 
-static void traversalEntryHook (void) {
+static void traversalReportBegin (void) {
     // We increment the stats before heap traversal.
     int64_t curGc = getNumGcs() - 1;
-
-    // XXX This should be checked by the CLI
-    if (gcDiffNewest > gcDiffOldest) {
-      gcDiffNewest = gcDiffOldest;
-    }
 
     fprintf (hp_file, "<leak profile>\n");
     fprintf (hp_file, "--------------\n");
@@ -1723,21 +1765,17 @@ static void traversalEntryHook (void) {
               , curGc);
     }
 
+    // XXX The memory may be affected by the traversal process. So
+    // should do this in the beginning only.
     if (report_process) {
       fprintf(hp_file, "<process memory>\n");
       fprintf(hp_file, "----------------\n");
       getMemMaps(report_verbose, 256);
-      if (report_verbose) {
+      if (report_mem_usage) {
           getMemUsage();
       }
       fprintf(hp_file, "</process memory>\n");
     }
-
-    gcstats = getGCStats(report_verbose,
-          report_mblock,
-          report_block,
-          report_block_used,
-          report_pinned_details);
 
     if (report_closures) {
       do_report_closures(curGc);
@@ -1748,14 +1786,41 @@ static void traversalEntryHook (void) {
           , mblock_address_space.begin);
     */
 
-    initialized = 1;
+    if (!initialized) {
+      initialized = 1;
+    }
+}
+
+static void traversalEntryHook (void) {
+    // XXX This should be checked by the CLI
+    if (gcDiffNewest > gcDiffOldest) {
+      gcDiffNewest = gcDiffOldest;
+    }
+
+    gcstats = getGCStats(report_verbose,
+          report_mblock,
+          report_block,
+          report_block_used,
+          report_pinned_details,
+          memstats.anon);
+
+    if (report_dump_blocks) {
+      initBlocks();
+    }
 }
 
 static void do_report_live(traversalStats *cur_stats, W_ mut_words) {
+    W_ total_words =
+          cur_stats->total_size +
+          mut_words +
+          gcstats.large_slop_words +
+          gcstats.small_slop_words;
+
     fprintf(hp_file, "<memory utilization>\n");
-    fprintf(hp_file, "---------live bytes/total bytes-----------\n");
+    fprintf(hp_file, "---------total live bytes/total used bytes-----------\n");
     reportWithUtilWords ("live bytes"
-          , gcstats.live_words, cur_stats->total_size + mut_words);
+          , gcstats.live_words
+          , total_words);
     W_ pinned_size = cur_stats->large_size + cur_stats->small_pinned_size;
     W_ unpinned_size = cur_stats->total_size - pinned_size;
     reportWithUtilWords (" movable"
@@ -1764,9 +1829,23 @@ static void do_report_live(traversalStats *cur_stats, W_ mut_words) {
     // data in both large and small allocations (aligned
     // arrays). However, the significant loss is because of dead
     // pinned objects.
+    //
+    // Only blocks with multiple objects can cause block level
+    // fragmentation.  Large object blocks can cause mega block level
+    // fragmentation but they can be identified by the heap traversal
+    // output, or we can dump those as well here.
+    //
+    // Technically, unpinned large can be moved to reduce megablock
+    // level fragmentation. We can allocate BF_PINNED memory from
+    // separate megablocks. BF_LARGE without BF_PINNED can be moved by
+    // the GC. Though this will break the assumption that BF_LARGE
+    // cannot be moved e.g. isByteArrayPinned primitive returns
+    // pinned even if only BF_LARGE is set.
     reportWithUtilWords (" pinned"
           , gcstats.large_words
-          , pinned_size);
+          , pinned_size
+            + gcstats.large_slop_words
+            + gcstats.small_slop_words);
     if (report_pinned_details) {
       reportWithUtilWords ("  large"
             , gcstats.large_pinned_words
@@ -1775,14 +1854,16 @@ static void do_report_live(traversalStats *cur_stats, W_ mut_words) {
             , gcstats.small_pinned_words
             , cur_stats->small_pinned_size);
     }
+    fprintf(hp_file, "  large_zeroes: %lu\n",
+          sizeof(W_) * gcstats.large_slop_words);
+    fprintf(hp_file, "  small_zeroes: %lu\n",
+          sizeof(W_) * gcstats.small_slop_words);
     reportWithUtilWords (" mut_lists"
     // XXX get it from gcstats?
           , mut_words
           , mut_words);
 
-    if (report_verbose) {
-      liveDiff(cur_stats->total_size * sizeof(W_));
-    }
+    liveDiff((total_words - mut_words - gcstats.cur_pinned_words) * sizeof(W_));
     fprintf(hp_file, "</memory utilization>\n");
 }
 
@@ -1794,8 +1875,8 @@ static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) 
 
     (void) any;
     (void) total;
-    //fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
-    //fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
+    fprintf (hp_file, "total visits: {%u}\n", timesAnyObjectVisited - any);
+    fprintf (hp_file, "total objects: {%u}\n", numObjectVisited - total);
 
     if (report_closures) {
       fprintf (hp_file, "matching bytes: %lu (%lu words)\n"
@@ -1807,6 +1888,10 @@ static void traversalExitHook (traverseState *ts, uint32_t any, uint32_t total) 
       do_report_live(cur_stats, mut_words);
     }
 
+    // Debug code to dump info about all the 4K blocks.
+    if (report_dump_blocks) {
+      dumpBlocks();
+    }
     fprintf (hp_file, "</leak profile>\n");
 
     gcLastReported = (int64_t) getNumGcs() - 1 - gcDiffNewest;
@@ -1831,8 +1916,9 @@ traverseWorkStack(traverseState *ts, visitClosure_cb visit_cb)
 
     initialized = 0;
     initTraversalStats(&ts->finalStats);
+    traversalEntryHook ();
     if (!report_only_when_filtered) {
-      traversalEntryHook ();
+      traversalReportBegin ();
     }
 
     // c = Current closure                           (possibly tagged)
@@ -1892,8 +1978,8 @@ inner_loop:
 
     case IND_STATIC:
         // We just skip IND_STATIC, so it's never visited.
-        c = ((StgIndStatic *)c)->indirectee;
-        bool first_visit1 = traverseIsFirstVisit(ts, UNTAG_CLOSURE(c));
+        c = UNTAG_CLOSURE(((StgIndStatic *)c)->indirectee);
+        bool first_visit1 = traverseIsFirstVisit(ts, c);
         if (first_visit1) {
           goto inner_loop;
         } else {
@@ -2100,7 +2186,7 @@ inner_loop:
     // (c, cp, data) = (first_child, c, child_data)
     data = child_data;
     cp = c;
-    c = first_child;
+    c = UNTAG_CLOSURE(first_child);
     // XXX don't need the static check
     if ((char *)c >= (char *)mblock_address_space.begin) {
       if (traverseIsFirstVisit(ts, c) == false) {

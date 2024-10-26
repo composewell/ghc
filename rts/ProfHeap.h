@@ -19,6 +19,7 @@ bool        strMatchesSelector (const char* str, const char* sel);
 #if defined(GC_PROFILING)
 // doingRetainerProfiling: `-hr` or `-hr<cc> -h<x>`
 bool doingRetainerProfiling(void);
+size_t getClosureSize(const StgClosure *p);
 #endif
 
 #include "EndPrivate.h"

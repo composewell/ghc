@@ -24,6 +24,14 @@
 #include "ThreadPaused.h"
 #include "Messages.h"
 
+// For profiling
+#if defined(GC_PROFILING)
+#include "ProfHeap.h"
+#include "TraverseHeap.h"
+#include "RetainerProfile.h"
+#include "Printer.h"
+#endif
+
 #include <string.h> // for memset
 
 #if defined(THREADED_RTS)
@@ -1728,7 +1736,7 @@ uint32_t getNumGcs(void)
     return stats.major_gcs;
 }
 
-extern size_t getClosureSize(const StgClosure *p);
+#if defined(GC_PROFILING)
 
 void reportWithUtilWords (char *desc, W_ total_words, W_ used_words) {
   W_ bytes = total_words * sizeof(W_);
@@ -1755,19 +1763,40 @@ static void reportWithUtil (char *desc, W_ blocks, W_ used_words) {
   reportWithUtilWords (desc, total_words, used_words);
 }
 
+static size_t
+countBlockSpace(bdescr *bd) {
+    size_t sz, size = 0;
+    StgPtr p = bd->start;
+
+    while (p < bd->free) {
+      while (p < bd->free && !*p) p++;
+      if (p >= bd->free) {
+        break;
+      }
+      StgClosure *c = (StgClosure *)p;
+      sz = getClosureSize(c);
+      size += sz;
+      p += sz;
+    }
+
+    return size;
+}
+
 gcStats getGCStats(bool verbose,
           bool report_mblock,
           bool report_block,
           bool report_block_used,
-          bool enable_fine_grained_pinned)
+          bool enable_fine_grained_pinned,
+          W_ anon)
 {
   uint32_t g, i;
   uint32_t gen_large_objs, gen_large_multi_objs, gen_compact_objs;
   uint32_t tot_large_objs, tot_compact_objs, tot_large_multi_objs;
-  W_ gen_live_words, gen_gcthread_words, cur_pinned_words;
-  W_ tot_live_words, tot_reg_words, tot_large_words, tot_mut_words,
+  W_ gen_live_words, gen_gcthread_words;
+  W_ tot_live_words, tot_reg_words, tot_large_words,
+     tot_large_slop_words, tot_small_slop_words, tot_mut_words,
      tot_gct_words, tot_large_multi_words, tot_large_single_words;
-  W_ gen_blocks, gen_gcthread_blocks, cur_pinned_blocks;
+  W_ gen_blocks, gen_gcthread_blocks;
   W_ tot_reg_blocks, tot_large_blocks, tot_compact_blocks,
      tot_mut_blocks, tot_gct_blocks;
   bdescr *bd;
@@ -1776,6 +1805,8 @@ gcStats getGCStats(bool verbose,
   tot_live_words = 0;
   tot_reg_words = 0;
   tot_large_words = 0;
+  tot_large_slop_words = 0;
+  tot_small_slop_words = 0;
   tot_large_multi_words = 0;
   tot_large_single_words = 0;
   tot_mut_words = 0;
@@ -1791,8 +1822,18 @@ gcStats getGCStats(bool verbose,
   tot_large_multi_objs = 0;
   tot_compact_objs = 0;
 
-  fprintf(hp_file, "<allocation stats>\n");
-  fprintf(hp_file, "------------------\n");
+  bool report_any =
+            verbose ||
+            report_mblock ||
+            report_block ||
+            report_block_used ||
+            enable_fine_grained_pinned;
+
+  if (report_any) {
+      fprintf(hp_file, "<allocation stats>\n");
+      fprintf(hp_file, "------------------\n");
+  }
+
   for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
       gen = &generations[g];
 
@@ -1807,24 +1848,53 @@ gcStats getGCStats(bool verbose,
             // Note: even objects which were allocated via the pointer bump
             // allocator may be single object sometimes, such blocks are also
             // counted as large single object blocks.
-            if (bd->blocks <= 1) {
-              // This may not work accurately always, because in some
-              // cases we may introduce padding at the beginning of a
-              // block for alignment e.g. an array closure is aligned to
-              // BA_ALIGN which may pad a word or two before the array.
-              // The padding may depend on the user requested alignment as
-              // well.
-              StgClosure *c = UNTAG_CLOSURE((StgClosure *)(bd->start));
-              size_t size = getClosureSize(c);
-              if (size < LARGE_OBJECT_THRESHOLD &&
-                    bd->start + size < bd->free) {
-                gen_large_multi_objs++;
-                tot_large_multi_words += bd->free - bd->start;
-              } else {
-                tot_large_single_words += bd->free - bd->start;
-              }
+            //
+            // Skip any aligment zeroes.
+            // we may introduce padding at the beginning of a
+            // block for alignment e.g. an array closure is aligned to
+            // BA_ALIGN which may pad a word or two before the array.
+            // The padding may depend on the user requested alignment as
+            // well.
+            // XXX If an array is shrunk, we may have a slop at the end, since
+            // the block is pinned, the slop remains forever. If we want to be
+            // able to iterate through all closures in a block we need to zero
+            // the slop in multi-object blocks. see OVERWRITING_CLOSURE_OFS.
+            // See comments before allocatePinned
+            StgPtr p = bd->start;
+            while (p < bd->free && !*p) p++;
+            if (p >= bd->free) {
+              barf ("gcStats: empty large block\n");
+            }
+            StgClosure *c = (StgClosure *)p;
+            size_t size = getClosureSize(c);
+            // XXX The code in heapCensusChain treats blocks as single object
+            // blocks based on just the BF_LARGE flag which seems to be
+            // incorrect as this flag is present on small pinned object
+            // blocks as well.
+            if (bd->flags & BF_LARGE
+                  && size * sizeof(W_) >= LARGE_OBJECT_THRESHOLD) {
+                // XXX Report the closure source location if a slop
+                // is found due to shrinking. One should rewrite
+                // pinned arrays rather than shrinking in place.  We should
+                // completely eliminate the slop due to alignment so
+                // that any slop can be attributed to shrinking only. Fix
+                // allocatePinned to not allocate any additional space
+                // due to alignment.
+                //
+                // XXX Report if the utilization of the block is low so that
+                // the user can possibly adjust the size.
+                tot_large_slop_words += bd->free - bd->start - size;
+                tot_large_single_words += size;
             } else {
-                tot_large_single_words += bd->free - bd->start;
+                gen_large_multi_objs++;
+                assert (bd->flags & BF_PINNED);
+                size_t size = countBlockSpace(bd);
+                // XXX Report the source loc if a slop is found after an
+                // array and before a non-array, such a slop can only be
+                // due to shrinking an array. We should rewrite pinned
+                // arrays rather than shrinking.
+                tot_small_slop_words += bd->free - bd->start - size;
+                tot_large_multi_words += size;
             }
           }
       }
@@ -1839,6 +1909,8 @@ gcStats getGCStats(bool verbose,
 
       gen_gcthread_blocks = 0;
       gen_gcthread_words = 0;
+      // gcthread todo_overflow and todo_latge_objects must be 0 at this point,
+      // so not counted here.
       for (i = 0; i < n_capabilities; i++) {
           tot_mut_words += countOccupied(capabilities[i]->mut_lists[g]);
           tot_mut_blocks += countBlocks(capabilities[i]->mut_lists[g]);
@@ -1923,26 +1995,36 @@ gcStats getGCStats(bool verbose,
 
   // XXX How is a pinned block freed? How do we know that all pinned objects in
   // a pinned block are dead?
-  cur_pinned_blocks = 0;
-  cur_pinned_words = 0;
+  W_ cur_pinned_blocks = 0;
+  W_ cur_pinned_words = 0;
+  W_ cur_pinned_slop = 0;
   for (i = 0; i < n_capabilities; i++) {
       bd = capabilities[i]->pinned_object_block;
       if (bd != NULL) {
           cur_pinned_blocks++;
-          cur_pinned_words = bd->free - bd->start;
+          size_t size = countBlockSpace(bd);
+          // XXX Report the source loc if a slop is found after an
+          // array and before a non-array, such a slop can only be
+          // due to shrinking an array. We should rewrite pinned
+          // arrays rather than shrinking.
+          cur_pinned_slop += bd->free - bd->start - size;
+          cur_pinned_words += size;
       }
       // cap->pinned_object_blocks is transferred to large_objects during gc,
       // so we do not worry about that, as we are called just after the GC.
       bd = capabilities[i]->pinned_object_blocks;
       for (; bd; bd = bd->link) {
-            cur_pinned_blocks++;
-            cur_pinned_words = bd->free - bd->start;
+            assert(false);
       }
   }
-  tot_live_words += cur_pinned_words;
+  tot_live_words += cur_pinned_words + cur_pinned_slop;
   tot_large_blocks += cur_pinned_blocks;
-  tot_large_words += cur_pinned_words;
+  tot_large_words += cur_pinned_words + cur_pinned_slop;
   tot_large_multi_objs += cur_pinned_blocks;
+  if (enable_fine_grained_pinned) {
+    tot_small_slop_words += cur_pinned_slop;
+    tot_large_multi_words += cur_pinned_words;
+  }
 
   // NOTE: pinned blocks may have less used space than actually reported,
   // because bd->free is not adjusted when objects become dead. So
@@ -1960,7 +2042,12 @@ gcStats getGCStats(bool verbose,
   // Blocks allocated at mblock allocator level. These blocks may have free
   // space which is accounted in the free blocks at block level.
   if (report_mblock) {
+    W_ n_free_mblocks = countFreeMBlocks();
+
     fprintf(hp_file, "---------MBlock allocator Summary-----------\n");
+    reportWithUtilWords("anon mem held by haskell"
+          , anon * 128
+          , (mblocks_allocated + n_free_mblocks) * BLOCKS_PER_MBLOCK * BLOCK_SIZE_W);
     fprintf(hp_file, "n_alloc_mblocks:%lu (~%lu blocks)\n"
           , mblocks_allocated
           , mblocks_allocated * BLOCKS_PER_MBLOCK);
@@ -1980,7 +2067,7 @@ gcStats getGCStats(bool verbose,
 
     // Completely free mblocks, none of this space is used anywhere and can be
     // returned to the OS.
-    fprintf(hp_file, "n_free_mblocks:%lu\n", countFreeMBlocks());
+    fprintf(hp_file, "n_free_mblocks:%lu\n", n_free_mblocks);
   }
 
   W_ tot_live_blocks =
@@ -2015,6 +2102,8 @@ gcStats getGCStats(bool verbose,
         , tot_large_multi_objs
         , tot_compact_blocks
         , tot_mut_blocks
+        // XXX for cross validation we should count all free lists
+        // independently and match here.
         , n_alloc_blocks - tot_live_blocks);
   }
 
@@ -2025,14 +2114,17 @@ gcStats getGCStats(bool verbose,
     reportWithUtil ("  generations", tot_reg_blocks - tot_gct_blocks,
         tot_reg_words - tot_gct_words);
     reportWithUtil ("  gcthreads", tot_gct_blocks, tot_gct_words);
-    reportWithUtil (" pinned", tot_large_blocks, tot_large_words);
+    reportWithUtil (" pinned", tot_large_blocks
+        , tot_large_words - tot_small_slop_words - tot_large_slop_words);
 
     if (enable_fine_grained_pinned) {
-      tot_large_multi_words += cur_pinned_words;
       reportWithUtil ("  large"
           , tot_large_single_blocks, tot_large_single_words);
       reportWithUtil ("  small"
-          , tot_large_multi_objs, tot_large_multi_words);
+          , tot_large_multi_objs - cur_pinned_blocks
+          , tot_large_multi_words - cur_pinned_words);
+      reportWithUtil ("  current"
+          , cur_pinned_blocks, cur_pinned_words);
     }
     fprintf(hp_file, " compact (pinned): %lu\n"
         , tot_compact_blocks * BLOCK_SIZE_W * sizeof(W_));
@@ -2054,57 +2146,27 @@ gcStats getGCStats(bool verbose,
   }
 
   if (enable_fine_grained_pinned) {
-    if (tot_large_words != tot_large_multi_words + tot_large_single_words) {
-      barf ("tot_large_words %lu != tot_large_multi_words %lu + "
+    if (tot_large_words !=
+          tot_large_slop_words +
+          tot_small_slop_words +
+          tot_large_multi_words +
+          tot_large_single_words) {
+      barf ("tot_large_words %lu != "
+            "tot_large_slop_words %lu + "
+            "tot_small_slop_words %lu + "
+            "tot_large_multi_words %lu + "
             "tot_large_single_words %lu\n",
-            tot_large_words, tot_large_multi_words, tot_large_single_words);
+            tot_large_words,
+            tot_large_slop_words,
+            tot_small_slop_words,
+            tot_large_multi_words,
+            tot_large_single_words);
     }
   }
 
-  /*
-  fprintf(hp_file, "live bytes (total,large,compact,slop):%lu,%lu,%lu,%lu\n"
-        , stats.gc.live_bytes
-        , stats.gc.large_objects_bytes
-        , stats.gc.compact_bytes
-        , stats.gc.slop_bytes);
-  */
-  //fprintf(hp_file, "---------End of Haskell Heap Summary-----------\n");
-
-  /*
-  if (verbose) {
-    // Only blocks with multiple objects can cause block level
-    // fragmentation.  Large object blocks can cause mega block level
-    // fragmentation but they can be identified by the heap traversal
-    // output, or we can dump those as well here.
-    //
-    // Technically, unpinned large can be moved to reduce megablock
-    // level fragmentation. We can allocate BF_PINNED memory from
-    // separate megablocks. BF_LARGE without BF_PINNED can be moved by
-    // the GC. Though this will break the assumption that BF_LARGE
-    // cannot be moved e.g. isByteArrayPinned primitive returns
-    // pinned even if only BF_LARGE is set.
-    fprintf(hp_file, "Pinned small object blocks\n");
-    for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
-        gen = &generations[g];
-
-        for (bd = gen->large_objects; bd; bd = bd->link) {
-            if (bd->blocks <= 1) {
-              StgClosure *c = UNTAG_CLOSURE((StgClosure *)(bd->start));
-              size_t size = getClosureSize(c);
-              // Print only if there are more than one objects in the block.
-              if (size < LARGE_OBJECT_THRESHOLD &&
-                    bd->start + size < bd->free) {
-                // assert (bd->blocks != 1);
-                fprintf(hp_file, "%p ", bd->start);
-              }
-            }
-        }
-    }
-    fprintf(hp_file, "\n");
+  if (report_any) {
+      fprintf(hp_file, "</allocation stats>\n");
   }
-  */
-
-  fprintf(hp_file, "</allocation stats>\n");
 
   gcStats st;
   st.live_words = tot_live_words;
@@ -2113,14 +2175,142 @@ gcStats getGCStats(bool verbose,
   if (enable_fine_grained_pinned) {
     st.small_pinned_words = tot_large_multi_words;
     st.large_pinned_words = tot_large_single_words;
+    st.large_slop_words = tot_large_slop_words;
+    st.small_slop_words = tot_small_slop_words;
+    st.cur_pinned_words = cur_pinned_words;
   }
   return st;
 }
 
 void liveDiff(size_t bytes) {
-    fprintf(hp_file, "stats.gc.live_bytes - live_bytes: %ld\n",
-          stats.gc.live_bytes - bytes);
+    size_t diff = stats.gc.live_bytes - bytes;
+    if (diff > 0) {
+      fprintf(hp_file, "stats.gc.live_bytes - live_bytes: %ld\n", diff);
+    }
 }
+
+static void init_one_block(bdescr *bd) {
+    bd->wordsSeen = 0;
+    if (bd->blocks > 1) {
+        // XXX need to init individual block's bd but we may not have closures
+        // in the individual blocks of large blocks, so this may be ok.
+    }
+}
+
+static void init_block_chain(bdescr *bd) {
+    for (; bd != NULL; bd = bd->link) {
+        init_one_block(bd);
+    }
+}
+
+// XXX pass gct pointer
+void initBlocks(void) {
+    uint32_t g;
+    generation *gen;
+
+    // XXX this code is called from each gc thread, so can be called multiple
+    // times in threaded RTS case. pass gct pointer to this function.
+    for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
+        gen = &generations[g];
+        init_block_chain(gen->blocks);
+        init_block_chain(gen->large_objects);
+        init_block_chain(gen->compact_objects);
+        for (unsigned int i = 0; i < n_capabilities; i++) {
+            init_block_chain(gc_threads[i]->gens[g].todo_bd);
+            init_block_chain(gc_threads[i]->gens[g].todo_overflow);
+            init_block_chain(gc_threads[i]->gens[g].todo_large_objects);
+            init_block_chain(gc_threads[i]->gens[g].part_list);
+            init_block_chain(gc_threads[i]->gens[g].scavd_list);
+
+            // XXX gcthread->mut_lists??
+            init_block_chain(capabilities[i]->mut_lists[g]);
+        }
+  }
+  for (unsigned int i = 0; i < n_capabilities; i++) {
+      bdescr *bd;
+      bd = capabilities[i]->pinned_object_block;
+      if (bd != NULL) {
+          init_one_block(bd);
+      }
+      // cap->pinned_object_blocks is transferred to large_objects during gc,
+      // so we do not worry about that, as we are called just after the GC.
+      init_block_chain(capabilities[i]->pinned_object_blocks);
+  }
+}
+
+static void dump_one_block(bdescr *bd) {
+    fprintf(hp_file, " %p", bd->start);
+    if (bd->blocks > 1) {
+        fprintf(hp_file, "(%d)", bd->blocks);
+        // XXX need to aggregate individual's block's wordsSeen into the
+        // main bd. But individual blocks may not have any closures so
+        // this may be ok.
+    }
+    fprintf(hp_file, "(%d/%ld)", bd->wordsSeen, bd->free - bd->start);
+}
+
+static void dump_block_chain(bdescr *bd) {
+    for (; bd != NULL; bd = bd->link) {
+        dump_one_block(bd);
+    }
+}
+
+// XXX account for free_blocks in gc threads
+void dumpBlocks(void) {
+    uint32_t g;
+    generation *gen;
+
+    fprintf(hp_file, "<block dump>\n");
+    fprintf(hp_file, "------------\n");
+    for (g = 0; g < RtsFlags.GcFlags.generations; g++) {
+        gen = &generations[g];
+        fprintf(hp_file, "gen %d:\n", g);
+        fprintf(hp_file, "  blocks:");
+        dump_block_chain(gen->blocks);
+        fprintf(hp_file, "\n");
+        fprintf(hp_file, "  large blocks:");
+        dump_block_chain(gen->large_objects);
+        fprintf(hp_file, "\n");
+        fprintf(hp_file, "  compact blocks:");
+        dump_block_chain(gen->compact_objects);
+        fprintf(hp_file, "\n");
+        for (unsigned int i = 0; i < n_capabilities; i++) {
+            fprintf(hp_file, "  gct_todo_blocks");
+            dump_block_chain(gc_threads[i]->gens[g].todo_bd);
+            fprintf(hp_file, "\n");
+            fprintf(hp_file, "  gct_todo_overflow:");
+            dump_block_chain(gc_threads[i]->gens[g].todo_overflow);
+            fprintf(hp_file, "\n");
+            fprintf(hp_file, "  gct_todo_large_blocks:");
+            dump_block_chain(gc_threads[i]->gens[g].todo_large_objects);
+            fprintf(hp_file, "\n");
+            fprintf(hp_file, "  gct_part:");
+            dump_block_chain(gc_threads[i]->gens[g].part_list);
+            fprintf(hp_file, "\n");
+            fprintf(hp_file, "  gct_scavd:");
+            dump_block_chain(gc_threads[i]->gens[g].scavd_list);
+            fprintf(hp_file, "\n");
+
+            // XXX gcthread->mut_lists??
+            fprintf(hp_file, "  mut_lists:");
+            dump_block_chain(capabilities[i]->mut_lists[g]);
+            fprintf(hp_file, "\n");
+        }
+  }
+  fprintf(hp_file, "  cur_pinned:");
+  for (unsigned int i = 0; i < n_capabilities; i++) {
+      bdescr *bd;
+      bd = capabilities[i]->pinned_object_block;
+      if (bd != NULL) {
+          dump_one_block(bd);
+      }
+      // cap->pinned_object_blocks is transferred to large_objects during gc,
+      // so we do not worry about that, as we are called just after the GC.
+      dump_block_chain(capabilities[i]->pinned_object_blocks);
+  }
+  fprintf(hp_file, "\n");
+}
+#endif
 
 /* -----------------------------------------------------------------------------
    Dumping stuff in the stats file, or via the debug message interface
