@@ -1,5 +1,6 @@
 # ghc 9.0.2 has some linking issue
 ghcup install ghc 9.0.1
+cabal install alex-3.4.0.0
 cabal install happy-1.20.1.1
 ./boot
 ./configure
@@ -9,3 +10,6 @@ cabal install happy-1.20.1.1
 _build/stage1/bin/ghc -prof -ddump-cmm -ddump-to-file -rtsopts -fforce-recomp ./fib.hs
 _build/stage1/bin/ghc -prof -ddump-cmm -ddump-to-file -rtsopts -fforce-recomp -finfo-table-map -fdistinct-constructor-tables ./fib.hs
 ./fib +RTS -i1 -hr -s
+
+./hadrian/build binary-dist-xz
+./hadrian/build source-dist
