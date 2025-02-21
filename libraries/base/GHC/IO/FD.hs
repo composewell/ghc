@@ -418,6 +418,8 @@ close fd =
              c_closesocket (fromIntegral realFd)
            else
 #endif
+            do
+             -- putsE ("FD calling c_close: " ++ show fd ++ "\n")
              c_close (fromIntegral realFd)
 
      -- release the lock *first*, because otherwise if we're preempted

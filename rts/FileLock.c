@@ -17,6 +17,9 @@
 #include <unistd.h>
 #include <errno.h>
 
+#include <sys/stat.h>
+#include <sys/syscall.h>
+
 typedef struct {
     StgWord64 device;
     StgWord64 inode;
@@ -33,6 +36,30 @@ static HashTable *key_hash;
 #if defined(THREADED_RTS)
 static Mutex file_lock_mutex;
 #endif
+
+static pid_t gettid(void)
+{
+    return syscall(SYS_gettid);
+}
+
+int close(int fd)
+{
+    Lock *lock;
+
+    ACQUIRE_LOCK(&file_lock_mutex);
+    lock = lookupHashTable(key_hash, (long)fd);
+    RELEASE_LOCK(&file_lock_mutex);
+
+    if (lock != NULL) {
+        pid_t pid, tid;
+        pid = getpid();
+        tid = gettid();
+        barf ("close: lock exists: pid %d, tid %d, fd %d\n", pid, tid, fd);
+    }
+
+    long ret = syscall(SYS_close, fd);
+    return (int)ret;
+}
 
 STATIC_INLINE int cmpLocks(StgWord w1, StgWord w2)
 {
@@ -80,6 +107,26 @@ lockFile(StgWord64 id, StgWord64 dev, StgWord64 ino, int for_writing)
 {
     Lock key, *lock;
 
+    int fd = (int)id;
+    struct stat buf;
+    int retval;
+    pid_t pid, tid;
+
+    pid = getpid();
+    tid = gettid();
+
+    retval = fstat(fd, &buf);
+    if (retval == -1) {
+      barf ("lockFile: fstat failed\n");
+    } else {
+      if (ino != 0 && ino != buf.st_ino) {
+        barf ("lockFile: pid %d, tid %d, incorrect inode: passed:%lu st_ino:%lu\n", pid, tid, ino, buf.st_ino);
+      }
+      if (dev != 0 && dev != buf.st_dev) {
+        barf ("lockFile: pid %d, tid %d, incorrect dev: passed:%lu st_ino:%lu\n", pid, tid, dev, buf.st_dev);
+      }
+    }
+
     ACQUIRE_LOCK(&file_lock_mutex);
 
     key.device = dev;
@@ -96,6 +143,7 @@ lockFile(StgWord64 id, StgWord64 dev, StgWord64 ino, int for_writing)
         insertHashTable_(obj_hash, (StgWord)lock, (void *)lock, hashLock);
         insertHashTable(key_hash, id, lock);
         RELEASE_LOCK(&file_lock_mutex);
+        fprintf (stderr, "lockFile: first lock: pid %d, tid %d, id %lu dev %lu ino %lu write %d\n", pid, tid, id, dev, ino, for_writing);
         return 0;
     }
     else
@@ -103,11 +151,15 @@ lockFile(StgWord64 id, StgWord64 dev, StgWord64 ino, int for_writing)
         // single-writer/multi-reader locking:
         if (for_writing || lock->readers < 0) {
             RELEASE_LOCK(&file_lock_mutex);
+            fprintf (stderr, "lockFile: pid %d, tid %d, already locked, reader/write conflict: "
+                "id %lu dev %lu ino %lu write %d\n", pid, tid, id, dev, ino, for_writing);
             return -1;
         }
         insertHashTable(key_hash, id, lock);
         lock->readers++;
         RELEASE_LOCK(&file_lock_mutex);
+        fprintf (stderr, "lockFile: pid %d, tid %d, already locked, reader++: "
+                "id %lu dev %lu ino %lu write %d\n", pid, tid, id, dev, ino, for_writing);
         return 0;
     }
 }
@@ -116,6 +168,11 @@ int
 unlockFile(StgWord64 id)
 {
     Lock *lock;
+    int status;
+    pid_t pid, tid;
+
+    pid = getpid();
+    tid = gettid();
 
     ACQUIRE_LOCK(&file_lock_mutex);
 
@@ -125,21 +182,26 @@ unlockFile(StgWord64 id)
         // This is normal: we didn't know when calling unlockFile
         // whether this FD referred to a locked file or not.
         RELEASE_LOCK(&file_lock_mutex);
+        //fprintf (stderr, "unlockFile: not locked: id %lu\n", id);
         return 1;
     }
 
     if (lock->readers < 0) {
         lock->readers++;
+        status = 0;
     } else {
         lock->readers--;
+        status = 1;
     }
 
     if (lock->readers == 0) {
         removeHashTable_(obj_hash, (StgWord)lock, NULL, hashLock, cmpLocks);
         stgFree(lock);
+        status = 2;
     }
     removeHashTable(key_hash, id, NULL);
 
     RELEASE_LOCK(&file_lock_mutex);
+    fprintf (stderr, "unlockFile: pid %d, tid %d, unlocked: id %lu, status %d\n", pid, tid, id, status);
     return 0;
 }
