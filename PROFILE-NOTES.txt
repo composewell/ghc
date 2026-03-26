@@ -1,7 +1,12 @@
 # ghc 9.0.2 has some linking issue
 ghcup install ghc 9.0.1
+ghcup set ghc 9.0.1
 cabal install alex-3.4.0.0
 cabal install happy-1.20.1.1
+export PATH=~/.cabal/bin:$PATH
+git clone https://github.com/composewell/ghc.git
+cd ghc
+git submodule update --init --recursive
 ./boot
 ./configure
 ./hadrian/build --flavour=quick
