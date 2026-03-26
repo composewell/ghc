@@ -319,7 +319,7 @@ initCapability (Capability *cap, uint32_t i)
 
     // Initialize to -1 for error checking.
 #if defined(GC_PROFILING)
-    cap->r.rCCCS = -1;
+    cap->r.rCCCS = (CostCentreStack *)(-1);
 #else
     cap->r.rCCCS = NULL;
 #endif
@@ -606,7 +606,7 @@ releaseCapability_ (Capability* cap,
     }
 
 #if defined(GC_PROFILING)
-    cap->r.rCCCS = -1;
+    cap->r.rCCCS = (CostCentreStack *)(-1);
 #endif
     RELAXED_STORE(&last_free_capability[cap->node], cap);
     debugTrace(DEBUG_sched, "freeing capability %d", cap->no);
@@ -909,7 +909,7 @@ void waitForCapability (Capability **pCap, Task *task)
     }
 
 #if defined(GC_PROFILING)
-    cap->r.rCCCS = -1;
+    cap->r.rCCCS = (CostCentreStack *)(-1);
 #endif
 
     ASSERT_FULL_CAPABILITY_INVARIANTS(cap, task);
@@ -1027,7 +1027,7 @@ yieldCapability
     ASSERT(cap->running_task == task);
 
 #if defined(GC_PROFILING)
-    cap->r.rCCCS = -1;
+    cap->r.rCCCS = (CostCentreStack *)(-1);
 #endif
 
     *pCap = cap;

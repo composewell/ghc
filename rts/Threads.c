@@ -21,6 +21,7 @@
 #include "RaiseAsync.h"
 #include "Prelude.h"
 #include "Printer.h"
+#include "Stats.h"
 #include "sm/Sanity.h"
 #include "sm/Storage.h"
 
@@ -84,7 +85,7 @@ createThread(Capability *cap, W_ size)
     TICK_ALLOC_STACK(stack_size);
     // XXX Search all places for stg_STACK_info
     // XXX search all places where SET_HDR is called
-    uint32_t gcs = getNumGcs();
+    CostCentreStack *gcs = (CostCentreStack *)(uint64_t)getNumGcs();
     SET_HDR(stack, &stg_STACK_info, gcs);
     stack->stack_size   = stack_size - sizeofW(StgStack);
     stack->sp           = stack->stack + stack->stack_size;
@@ -284,7 +285,7 @@ tryWakeupThread (Capability *cap, StgTSO *tso)
         MessageWakeup *msg;
         msg = (MessageWakeup *)allocate(cap,sizeofW(MessageWakeup));
         msg->tso = tso;
-        SET_HDR(msg, &stg_MSG_TRY_WAKEUP_info, (uint64_t)getNumGcs());
+        SET_HDR(msg, &stg_MSG_TRY_WAKEUP_info, (CostCentreStack *)(uint64_t)getNumGcs());
         sendMessage(cap, tso->cap, (Message*)msg);
         debugTraceCap(DEBUG_sched, cap, "message: try wakeup thread %ld on cap %d",
                       (W_)tso->id, tso->cap->no);

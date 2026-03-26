@@ -58,7 +58,7 @@ CostCentre      *CC_LIST  = NULL;
 static CostCentreStack *CCS_LIST = NULL;
 
 #if defined(THREADED_RTS)
-static Mutex ccs_mutex;
+//static Mutex ccs_mutex;
 #endif
 
 /*
@@ -106,6 +106,7 @@ CCS_DECLARE(CCS_IDLE,       CC_IDLE,       );
  * Static Functions
  */
 
+/*
 static  CostCentreStack * appendCCS       ( CostCentreStack *ccs1,
                                             CostCentreStack *ccs2 );
 static  CostCentreStack * actualPush_     ( CostCentreStack *ccs, CostCentre *cc,
@@ -122,10 +123,11 @@ static  IndexTable *      addToIndexTable ( IndexTable *, CostCentreStack *,
                                             CostCentre *, bool );
 static  void              ccsSetSelected  ( CostCentreStack *ccs );
 static  void              aggregateCCCosts( CostCentreStack *ccs );
+*/
 static  void              registerCC      ( CostCentre *cc );
 static  void              registerCCS     ( CostCentreStack *ccs );
 
-static  void              initTimeProfiling    ( void );
+//static  void              initTimeProfiling    ( void );
 static  void              initProfilingLogFile ( void );
 
 /* -----------------------------------------------------------------------------
@@ -159,7 +161,7 @@ void initProfiling (void)
     {
         uint32_t n;
         for (n=0; n < getNumCapabilities(); n++) {
-            capabilities[n]->r.rCCCS = -1;
+            capabilities[n]->r.rCCCS = (CostCentreStack *)(-1);
         }
     }
 
@@ -303,6 +305,7 @@ initProfilingLogFile(void)
     }
 }
 
+#if 0
 void
 initTimeProfiling(void)
 {
@@ -310,6 +313,7 @@ initTimeProfiling(void)
     /* Start ticking */
     startProfTimer();
 };
+#endif
 
 void
 endProfiling ( void )

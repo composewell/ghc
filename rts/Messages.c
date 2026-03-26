@@ -138,6 +138,8 @@ loop:
 
 #endif
 
+uint32_t getNumGcs(void);
+
 /* ----------------------------------------------------------------------------
    Handle a MSG_BLACKHOLE message
 
@@ -234,7 +236,7 @@ loop:
         // a collision to update a BLACKHOLE and a BLOCKING_QUEUE
         // becomes orphaned (see updateThunk()).
         bq->link = owner->bq;
-        SET_HDR(bq, &stg_BLOCKING_QUEUE_DIRTY_info, (uint64_t)getNumGcs());
+        SET_HDR(bq, &stg_BLOCKING_QUEUE_DIRTY_info, (CostCentreStack *)(uint64_t)getNumGcs());
         // We are about to make the newly-constructed message visible to other cores;
         // a barrier is necessary to ensure that all writes are visible.
         // See Note [Heap memory barriers] in SMP.h.

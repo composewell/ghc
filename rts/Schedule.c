@@ -212,7 +212,7 @@ t->cur_allocated = %d\n", t->id, t->cur_sec, t->cur_nsec, t->cur_allocated);
     } else {
         if (t->cur_sec < 0 || t->cur_nsec < 0) {
             fprintf (stderr, "ON ENTRY ERROR: \
-tid = %d, \
+tid = %ld, \
 t->cur_sec = %ld \
 t->cur_nsec = %ld \
 t->cur_allocated = %d\n", t->id, t->cur_sec, t->cur_nsec, t->cur_allocated);
@@ -284,7 +284,7 @@ t->cur_allocated = %d\n", t->id, t->cur_sec, t->cur_nsec, t->cur_allocated);
         // fprintf (stderr, "AFTER DONE: tid = %d, t->cur_sec = %ld t->cur_nsec = %ld\n", t->id, t->cur_sec, t->cur_nsec);
         if (*cur_sec_res < 0 || *cur_nsec_res < 0) {
             fprintf (stderr, "ON EXIT ERROR PRIM: \
-tid = %d, \
+tid = %ld, \
 t->cur_sec = %ld \
 t->cur_nsec = %ld \
 t->cur_allocated = %d\n",
@@ -615,7 +615,7 @@ run_thread:
         StgRegTable *r;
 
 #if defined(GC_PROFILING)
-        t->prof.cccs = getNumGcs();
+        t->prof.cccs = (CostCentreStack *)(uint64_t)getNumGcs();
 #endif
         updateThreadCPUTimePre (cap, t);
         r = StgRun((StgFunPtr) stg_returnToStackTop, &cap->r);
@@ -679,7 +679,7 @@ run_thread:
     // Costs for the scheduler are assigned to CCS_SYSTEM
     pauseHeapProfTimer();
 #if defined(GC_PROFILING)
-    cap->r.rCCCS = -1;
+    cap->r.rCCCS = (CostCentreStack *)(-1);
 #endif
 
     schedulePostRunThread(cap,t);

@@ -357,6 +357,8 @@ countAllocdCompactBlocks(bdescr *outer)
 }
 #endif
 
+uint32_t getNumGcs(void);
+
 StgCompactNFData *
 compactNew (Capability *cap, StgWord size)
 {
@@ -377,7 +379,7 @@ compactNew (Capability *cap, StgWord size)
                                          ALLOCATE_NEW);
 
     self = firstBlockGetCompact(block);
-    SET_HDR((StgClosure*)self, &stg_COMPACT_NFDATA_CLEAN_info, (uint64_t)getNumGcs());
+    SET_HDR((StgClosure*)self, &stg_COMPACT_NFDATA_CLEAN_info, (CostCentreStack *)(uint64_t)getNumGcs());
     self->autoBlockW = aligned_size / sizeof(StgWord);
     self->nursery = block;
     self->last = block;

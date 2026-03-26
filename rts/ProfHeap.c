@@ -156,7 +156,7 @@ static uint32_t n_censuses = 0;
 static void aggregateCensusInfo( void );
 #endif
 
-static void dumpCensus( Census *census );
+// static void dumpCensus( Census *census );
 
 static bool closureSatisfiesConstraints( const StgClosure* p );
 
@@ -363,6 +363,7 @@ freeEra(Census *census)
  * Reallocates gi[] and increases its size if needed.
  * ----------------------------------------------------------------------- */
 
+#if 0
 static void
 nextEra( void )
 {
@@ -394,6 +395,7 @@ nextEra( void )
 
     initEra( &censuses[era] );
 }
+#endif
 
 /* ----------------------------------------------------------------------------
  * Heap profiling by info table
@@ -868,6 +870,7 @@ aggregateCensusInfo( void )
 /* -----------------------------------------------------------------------------
  * Print out the results of a heap census.
  * -------------------------------------------------------------------------- */
+#if 0
 static void
 dumpCensus( Census *census )
 {
@@ -1019,6 +1022,7 @@ dumpCensus( Census *census )
 
     restore_locale();
 }
+#endif
 
 inline counter*
 heapInsertNewCounter(Census *census, StgWord identity)
@@ -1112,6 +1116,7 @@ static void heapProfObject(Census *census, StgClosure *p, size_t size,
 // so we don't need the loop.
 //
 // See Note [Compact Normal Forms] for details.
+/*
 static void
 heapCensusCompactList(Census *census, bdescr *bd)
 {
@@ -1122,7 +1127,9 @@ heapCensusCompactList(Census *census, bdescr *bd)
                        compact_nfdata_full_sizeW(str), true);
     }
 }
+*/
 
+#if 0
 /*
  * Take a census of the contents of a "normal" (e.g. not large, not compact)
  * heap block. This can, however, handle PINNED blocks.
@@ -1284,8 +1291,7 @@ heapCensusBlock(Census *census, bdescr *bd)
          */
     }
 }
-
-extern size_t getClosureSize(const StgClosure *p);
+#endif
 
 // XXX Use closure_sizeW instead.
 // Size in Stg Words units.
@@ -1433,6 +1439,7 @@ size_t getClosureSize(const StgClosure *p) {
 #endif
 }
 
+#if 0
 /* -----------------------------------------------------------------------------
  * Code to perform a heap census.
  * -------------------------------------------------------------------------- */
@@ -1462,14 +1469,15 @@ heapCensusChain( Census *census, bdescr *bd )
         heapCensusBlock(census, bd);
     }
 }
+#endif
 
 // Time is process CPU time of beginning of current GC and is used as
 // the mutator CPU time reported as the census timestamp.
 void heapCensus (Time t)
 {
-  uint32_t g, n;
+  //uint32_t g, n;
   Census *census;
-  gen_workspace *ws;
+  //gen_workspace *ws;
 
   census = &censuses[era];
   census->time  = TimeToSecondsDbl(t);
