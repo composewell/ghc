@@ -667,6 +667,7 @@ mkHandleMVar :: (RawIO dev, IODevice dev, BufferedIO dev, Typeable dev) => dev
 mkHandleMVar dev filepath ha_type buffered mb_codec nl other_side =
    openTextEncoding mb_codec ha_type $ \ mb_encoder mb_decoder -> do
 
+   traceIOE $ "mKHandleMVar fd :" ++ IODevice.showDev dev ++ " : " ++ filepath
    let !buf_state = initBufferState ha_type
    !bbuf_no_offset <- (Buffered.newBuffer dev buf_state)
    !buf_offset <- initHandleOffset
@@ -943,6 +944,12 @@ traceIO :: String -> IO ()
 traceIO s = do
          _ <- withCStringLen (s ++ "\n") $
                   \(p, len) -> c_write 1 (castPtr p) (fromIntegral len)
+         return ()
+
+traceIOE :: String -> IO ()
+traceIOE s = do
+         _ <- withCStringLen (s ++ "\n") $
+                  \(p, len) -> c_write 2 (castPtr p) (fromIntegral len)
          return ()
 
 -- ----------------------------------------------------------------------------

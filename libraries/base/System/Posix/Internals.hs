@@ -62,6 +62,12 @@ puts s = withCAStringLen (s ++ "\n") $ \(p, len) -> do
            _ <- c_write 1 (castPtr p) (fromIntegral len)
            return ()
 
+putsE :: String -> IO ()
+putsE s = withCAStringLen (s ++ "\n") $ \(p, len) -> do
+            -- In reality should be withCString, but assume ASCII to avoid loop
+            -- if this is called by GHC.Foreign
+           _ <- c_write 2 (castPtr p) (fromIntegral len)
+           return ()
 
 -- ---------------------------------------------------------------------------
 -- Types

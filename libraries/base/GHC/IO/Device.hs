@@ -60,7 +60,7 @@ class RawIO a where
 
 
 -- | I/O operations required for implementing a 'System.IO.Handle'.
-class IODevice a where
+class Show a => IODevice a where
   -- | @ready dev write msecs@ returns 'True' if the device has data
   -- to read (if @write@ is 'False') or space to write new data (if
   -- @write@ is 'True').  @msecs@ specifies how long to wait, in
@@ -124,6 +124,9 @@ class IODevice a where
   -- it is made into a duplicate of the first device (like Unix @dup2@).
   dup2 :: a -> a -> IO a
   dup2 _ _ = ioe_unsupportedOperation
+
+  showDev :: a -> String
+  showDev a = show a
 
 ioe_unsupportedOperation :: IO a
 ioe_unsupportedOperation = throwIO unsupportedOperation
